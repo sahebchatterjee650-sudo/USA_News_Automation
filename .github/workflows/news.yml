@@ -45,11 +45,13 @@ jobs:
         run: |
           python --version
           ffmpeg -version
-          python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('Required Python packages are ready.')"
+          python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('Required packages are ready.')"
 
       - name: Generate news scripts and videos
         env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
+          GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
+          GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           PYTHONUNBUFFERED: "1"
         run: python -u main.py
 
