@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: usa-news-automation
+  cancel-in-progress: false
+
 jobs:
   collect-news:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -21,25 +26,40 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+          ffmpeg -version
+          ffprobe -version
 
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
-      - name: Generate news scripts
+      - name: Verify required tools
+        run: |
+          python --version
+          ffmpeg -version
+          python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('Required Python packages are ready.')"
+
+      - name: Generate news scripts and videos
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: python main.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u main.py
 
-      - name: Save generated scripts
+      - name: Save generated scripts and videos
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: news-scripts
-          path: scripts.txt
+          name: digital-orbit-news-output
+          path: |
+            scripts.txt
+            output_videos/
           if-no-files-found: ignore
           retention-days: 7
