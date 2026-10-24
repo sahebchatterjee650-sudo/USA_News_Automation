@@ -4,7 +4,6 @@ import re
 import html
 import asyncio
 import subprocess
-import textwrap
 from pathlib import Path
 from io import BytesIO
 from urllib.parse import urlparse
@@ -12,16 +11,17 @@ from urllib.parse import urlparse
 import feedparser
 import requests
 import edge_tts
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
 
-# --------------------------------------------------
-# DIGITAL ORBIT USA NEWS AUTOMATION
-# --------------------------------------------------
+# ==================================================
+# DIGITAL ORBIT USA NEWS SHORTS
+# ==================================================
 
 RSS_URL = "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
-OUTPUT_FILE = "scripts.txt"
+
 VIDEO_DIR = Path("output_videos")
+OUTPUT_FILE = "scripts.txt"
 
 LOGO_FILE = Path("digital_orbit_logo.png")
 BANNER_FILE = Path("digital_orbit_banner.png")
@@ -32,15 +32,17 @@ VOICE = "en-US-AndrewNeural"
 MAX_STORIES = 3
 WIDTH, HEIGHT = 1080, 1920
 
-SESSION = requests.Session()
-SESSION.headers.update({
-    "User-Agent": "DigitalOrbitNewsBot/1.0"
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 DigitalOrbitNews/1.0"
 })
 
 
-# --------------------------------------------------
-# API KEYS
-# --------------------------------------------------
+# ==================================================
+# API KEYS: GitHub Repository Secrets
+# ==================================================
 
 def get_api_keys():
     names = [
@@ -51,10 +53,11 @@ def get_api_keys():
     ]
 
     keys = []
+
     for name in names:
-        key = os.environ.get(name, "").strip()
-        if key and key not in keys:
-            keys.append(key)
+        value = os.environ.get(name, "").strip()
+        if value and value not in keys:
+            keys.append(value)
 
     if not keys:
         raise RuntimeError("No Google API keys configured.")
@@ -65,9 +68,10 @@ def get_api_keys():
 def generate_script(keys, prompt):
     last_error = ""
 
-    for index, key in enumerate(keys, start=1):
+    for slot, key in enumerate(keys, start=1):
         try:
             client = genai.Client(api_key=key)
+
             response = client.models.generate_content(
                 model=MODEL,
                 contents=prompt,
@@ -76,14 +80,14 @@ def generate_script(keys, prompt):
             script = (response.text or "").strip()
 
             if script:
-                print(f"Script generated using key slot {index}.")
+                print(f"Script generated using key slot {slot}.")
                 return script
 
         except Exception as exc:
             last_error = str(exc)
-            lower = last_error.lower()
+            low = last_error.lower()
 
-            retryable = any(term in lower for term in [
+            retryable = any(term in low for term in (
                 "429",
                 "resource_exhausted",
                 "quota exceeded",
@@ -92,60 +96,53 @@ def generate_script(keys, prompt):
                 "unavailable",
                 "server disconnected",
                 "deadline exceeded",
-            ])
+            ))
 
             if retryable:
-                print(
-                    f"Key slot {index} unavailable; "
-                    "trying the next configured key."
-                )
+                print(f"Key slot {slot} unavailable; trying next key.")
                 continue
 
-            print(
-                f"Key slot {index} failed: {last_error[:250]}"
-            )
+            print(f"AI error for key slot {slot}: {last_error[:250]}")
             break
 
     print("AI generation failed:", last_error[:300])
     return ""
 
 
-# --------------------------------------------------
+# ==================================================
 # FONTS AND IMAGE HELPERS
-# --------------------------------------------------
+# ==================================================
 
 def get_font(size, bold=False):
-    candidates = []
-
     if bold:
-        candidates.extend([
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-        ])
+        ]
     else:
-        candidates.extend([
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-        ])
+        ]
 
-    for filename in candidates:
-        if Path(filename).exists():
-            return ImageFont.truetype(filename, size)
+    for path in paths:
+        if Path(path).exists():
+            return ImageFont.truetype(path, size)
 
     return ImageFont.load_default()
 
 
-def load_image(path):
+def load_local_image(path):
     try:
         if path.exists():
             return Image.open(path).convert("RGB")
     except Exception as exc:
-        print("Image load warning:", str(exc)[:200])
+        print("Local image warning:", str(exc)[:150])
 
     return None
 
 
-def fit_cover(image, size):
+def cover_image(image, size):
     return ImageOps.fit(
         image.convert("RGB"),
         size,
@@ -154,16 +151,17 @@ def fit_cover(image, size):
     )
 
 
-def draw_wrapped_text(draw, text, x, y, max_width,
-                      font, fill, line_gap=12, max_lines=4):
+def draw_wrapped(draw, text, x, y, max_width, font,
+                 fill, max_lines=4, line_gap=10):
     words = text.split()
     lines = []
     current = ""
 
     for word in words:
         trial = f"{current} {word}".strip()
+        width = draw.textbbox((0, 0), trial, font=font)[2]
 
-        if draw.textbbox((0, 0), trial, font=font)[2] <= max_width:
+        if width <= max_width:
             current = trial
         else:
             if current:
@@ -182,32 +180,33 @@ def draw_wrapped_text(draw, text, x, y, max_width,
     return y
 
 
-# --------------------------------------------------
-# GET STORY IMAGE FROM RSS
-# --------------------------------------------------
+# ==================================================
+# DOWNLOAD AN IMAGE FROM THE RSS ENTRY
+# ==================================================
 
 def get_story_image(entry):
     candidates = []
 
-    for media in entry.get("media_content", []) or []:
-        if media.get("url"):
-            candidates.append(media["url"])
+    for item in entry.get("media_content", []) or []:
+        url = item.get("url")
+        if url:
+            candidates.append(url)
 
-    for media in entry.get("media_thumbnail", []) or []:
-        if media.get("url"):
-            candidates.append(media["url"])
+    for item in entry.get("media_thumbnail", []) or []:
+        url = item.get("url")
+        if url:
+            candidates.append(url)
 
-    for enclosure in entry.get("enclosures", []) or []:
-        href = enclosure.get("href") or enclosure.get("url")
-        mime = enclosure.get("type", "")
+    for item in entry.get("enclosures", []) or []:
+        url = item.get("href") or item.get("url")
+        mime = item.get("type", "")
 
-        if href and (
+        if url and (
             mime.startswith("image/")
-            or re.search(r"\.(jpg|jpeg|png|webp)(\?|$)", href, re.I)
+            or re.search(r"\.(jpg|jpeg|png|webp)(\?|$)", url, re.I)
         ):
-            candidates.append(href)
+            candidates.append(url)
 
-    # Some RSS summaries include an image inside HTML.
     for field in ("summary", "description"):
         raw = entry.get(field, "") or ""
         match = re.search(
@@ -215,20 +214,21 @@ def get_story_image(entry):
             raw,
             re.I,
         )
+
         if match:
             candidates.append(html.unescape(match.group(1)))
 
-    for url in candidates:
+    for url in dict.fromkeys(candidates):
         try:
-            parsed = urlparse(url)
-            if parsed.scheme not in ("http", "https"):
+            if urlparse(url).scheme not in ("http", "https"):
                 continue
 
-            response = SESSION.get(url, timeout=12)
+            response = session.get(url, timeout=12)
             response.raise_for_status()
 
-            content_type = response.headers.get("Content-Type", "")
-            if not content_type.startswith("image/"):
+            if not response.headers.get(
+                "Content-Type", ""
+            ).startswith("image/"):
                 continue
 
             if len(response.content) > 12 * 1024 * 1024:
@@ -238,224 +238,233 @@ def get_story_image(entry):
             image = ImageOps.exif_transpose(image).convert("RGB")
 
             if image.width >= 250 and image.height >= 150:
-                print("Story image downloaded.")
+                print("News image found.")
                 return image
 
         except Exception:
             continue
 
-    print("No suitable RSS image found; using branded background.")
+    print("No RSS image available; using the branded fallback.")
     return None
 
 
-# --------------------------------------------------
-# CREATE NEWS BACKGROUND
-# --------------------------------------------------
+# ==================================================
+# CREATE THE TV NEWS LAYOUT
+# ==================================================
 
 def create_background(headline, story_image, index):
-    canvas = Image.new("RGB", (WIDTH, HEIGHT), (5, 15, 38))
+    canvas = Image.new("RGB", (WIDTH, HEIGHT), (4, 13, 32))
     draw = ImageDraw.Draw(canvas)
 
-    banner = load_image(BANNER_FILE)
+    banner = load_local_image(BANNER_FILE)
     logo = None
 
     try:
         if LOGO_FILE.exists():
             logo = Image.open(LOGO_FILE).convert("RGBA")
     except Exception:
-        logo = None
+        pass
 
-    # Header background uses the uploaded banner when available.
+    # Header: use the uploaded banner as a subtle backdrop.
     if banner:
-        header = fit_cover(banner, (WIDTH, 360))
-        header = header.filter(ImageFilter.GaussianBlur(1))
+        header = cover_image(banner, (WIDTH, 290))
+        header = header.filter(ImageFilter.GaussianBlur(2))
         canvas.paste(header, (0, 0))
-        draw.rectangle((0, 0, WIDTH, 360), fill=(2, 12, 32, 90))
-    else:
-        draw.rectangle((0, 0, WIDTH, 360), fill=(4, 28, 66))
 
-    # Darken header slightly so branding remains readable.
-    overlay = Image.new("RGBA", (WIDTH, 360), (0, 8, 25, 100))
-    canvas.paste(
-        Image.alpha_composite(
-            canvas.crop((0, 0, WIDTH, 360)).convert("RGBA"),
-            overlay,
-        ).convert("RGB"),
-        (0, 0),
-    )
+    draw = ImageDraw.Draw(canvas)
+    draw.rectangle((0, 0, WIDTH, 290), fill=(2, 12, 32))
+
+    if banner:
+        header = cover_image(banner, (WIDTH, 290))
+        header = Image.blend(
+            header,
+            Image.new("RGB", header.size, (2, 12, 32)),
+            0.42,
+        )
+        canvas.paste(header, (0, 0))
 
     draw = ImageDraw.Draw(canvas)
 
+    # Logo on the left.
     if logo:
-        logo.thumbnail((190, 190), Image.Resampling.LANCZOS)
-        x = 38
-        y = 30
+        logo.thumbnail((170, 170), Image.Resampling.LANCZOS)
         canvas_rgba = canvas.convert("RGBA")
-        canvas_rgba.alpha_composite(logo, (x, y))
+        canvas_rgba.alpha_composite(logo, (35, 35))
         canvas = canvas_rgba.convert("RGB")
         draw = ImageDraw.Draw(canvas)
 
     draw.text(
-        (250, 65),
+        (225, 55),
         "DIGITAL ORBIT",
-        font=get_font(55, True),
-        fill=(255, 255, 255),
-        stroke_width=2,
-        stroke_fill=(0, 20, 55),
-    )
-
-    draw.text(
-        (255, 135),
-        "USA NEWS",
-        font=get_font(38, True),
-        fill=(40, 220, 255),
-    )
-
-    draw.rounded_rectangle(
-        (255, 205, 600, 265),
-        radius=14,
-        fill=(210, 30, 48),
-    )
-    draw.text(
-        (278, 216),
-        "LATEST UPDATE",
-        font=get_font(27, True),
+        font=get_font(49, True),
         fill="white",
     )
 
-    # Main story image.
-    image_top = 385
-    image_height = 720
-    image_box = (35, image_top, WIDTH - 35, image_top + image_height)
-
-    if story_image:
-        featured = fit_cover(
-            story_image,
-            (image_box[2] - image_box[0],
-             image_box[3] - image_box[1]),
-        )
-    elif banner:
-        featured = fit_cover(banner, (
-            image_box[2] - image_box[0],
-            image_box[3] - image_box[1],
-        ))
-    else:
-        featured = Image.new(
-            "RGB",
-            (image_box[2] - image_box[0],
-             image_box[3] - image_box[1]),
-            (12, 38, 78),
-        )
-
-    canvas.paste(featured, (image_box[0], image_box[1]))
-    draw = ImageDraw.Draw(canvas)
-
-    # Image border and lower gradient-style dark strip.
-    draw.rectangle(image_box, outline=(30, 190, 255), width=5)
-    draw.rectangle(
-        (35, 1020, WIDTH - 35, 1105),
-        fill=(2, 12, 30),
-    )
     draw.text(
-        (60, 1040),
-        "DIGITAL ORBIT  |  USA NEWS",
-        font=get_font(30, True),
-        fill=(255, 205, 70),
-    )
-
-    # Breaking-news label.
-    draw.rectangle((35, 1140, WIDTH - 35, 1220), fill=(205, 25, 45))
-    draw.text(
-        (60, 1155),
-        "BREAKING NEWS",
-        font=get_font(39, True),
-        fill="white",
-    )
-
-    # Headline.
-    draw.rounded_rectangle(
-        (35, 1250, WIDTH - 35, 1575),
-        radius=18,
-        fill=(7, 24, 55),
-        outline=(15, 130, 230),
-        width=3,
-    )
-
-    draw_wrapped_text(
-        draw,
-        headline.upper(),
-        65,
-        1290,
-        WIDTH - 130,
-        get_font(47, True),
-        "white",
-        line_gap=13,
-        max_lines=5,
-    )
-
-    # Caption-safe region. Actual subtitles are overlaid by FFmpeg.
-    draw.rectangle(
-        (35, 1595, WIDTH - 35, 1745),
-        fill=(4, 13, 31),
-    )
-    draw.text(
-        (60, 1635),
-        "STAY INFORMED  •  DIGITAL ORBIT",
-        font=get_font(27, True),
-        fill=(55, 215, 255),
-    )
-
-    # Bottom news ticker base. The scrolling text is added in FFmpeg.
-    draw.rectangle((0, 1775, WIDTH, HEIGHT), fill=(3, 10, 25))
-    draw.rectangle((0, 1775, WIDTH, 1787), fill=(235, 35, 50))
-    draw.rectangle((0, 1787, WIDTH, 1795), fill=(35, 190, 255))
-
-    draw.text(
-        (35, 1820),
+        (228, 120),
         "USA NEWS",
         font=get_font(34, True),
+        fill=(45, 210, 255),
+    )
+
+    draw.rounded_rectangle(
+        (225, 180, 525, 238),
+        radius=10,
+        fill=(205, 27, 45),
+    )
+    draw.text(
+        (244, 192),
+        "LATEST UPDATE",
+        font=get_font(25, True),
+        fill="white",
+    )
+
+    # Main image area.
+    image_x = 35
+    image_y = 315
+    image_w = WIDTH - 70
+    image_h = 640
+
+    if story_image is not None:
+        featured = cover_image(story_image, (image_w, image_h))
+    elif banner is not None:
+        featured = cover_image(banner, (image_w, image_h))
+    else:
+        featured = Image.new(
+            "RGB", (image_w, image_h), (12, 35, 75)
+        )
+
+    canvas.paste(featured, (image_x, image_y))
+    draw = ImageDraw.Draw(canvas)
+
+    draw.rectangle(
+        (image_x, image_y, image_x + image_w, image_y + image_h),
+        outline=(30, 185, 255),
+        width=5,
+    )
+
+    draw.rectangle((35, 975, WIDTH - 35, 1045), fill=(5, 18, 42))
+    draw.text(
+        (55, 994),
+        "DIGITAL ORBIT  |  USA NEWS",
+        font=get_font(29, True),
         fill=(255, 205, 65),
     )
 
+    # Breaking-news banner.
+    draw.rectangle((35, 1070, WIDTH - 35, 1145), fill=(205, 28, 45))
     draw.text(
-        (35, 1880),
-        "DIGITAL ORBIT  •  NEWS BRIEFING",
-        font=get_font(23, True),
-        fill=(230, 240, 255),
+        (58, 1086),
+        "LATEST NEWS",
+        font=get_font(37, True),
+        fill="white",
     )
 
-    output_path = VIDEO_DIR / f"background_{index:02}.png"
-    canvas.save(output_path, quality=95)
-    return output_path
+    # Headline panel: text is kept inside a fixed area.
+    panel = (35, 1170, WIDTH - 35, 1390)
+
+    draw.rounded_rectangle(
+        panel,
+        radius=18,
+        fill=(7, 24, 55),
+        outline=(20, 145, 240),
+        width=3,
+    )
+
+    draw_wrapped(
+        draw,
+        headline.upper(),
+        62,
+        1200,
+        WIDTH - 124,
+        get_font(39, True),
+        "white",
+        max_lines=4,
+        line_gap=8,
+    )
+
+    # Dedicated subtitle area. FFmpeg subtitles are placed here.
+    draw.rectangle((35, 1415, WIDTH - 35, 1610), fill=(3, 12, 29))
+
+    draw.text(
+        (58, 1430),
+        "NEWS BRIEFING",
+        font=get_font(25, True),
+        fill=(40, 210, 255),
+    )
+
+    draw.rounded_rectangle(
+        (55, 1480, WIDTH - 55, 1585),
+        radius=12,
+        fill=(12, 27, 48),
+        outline=(45, 90, 135),
+        width=2,
+    )
+
+    # Ticker band.
+    draw.rectangle((0, 1630, WIDTH, HEIGHT), fill=(2, 9, 23))
+    draw.rectangle((0, 1630, WIDTH, 1642), fill=(225, 30, 48))
+    draw.rectangle((0, 1642, WIDTH, 1650), fill=(30, 190, 255))
+
+    draw.rectangle((0, 1665, WIDTH, 1735), fill=(190, 25, 43))
+    draw.text(
+        (35, 1682),
+        "USA NEWS",
+        font=get_font(34, True),
+        fill="white",
+    )
+
+    draw.text(
+        (35, 1770),
+        "DIGITAL ORBIT",
+        font=get_font(30, True),
+        fill=(45, 210, 255),
+    )
+
+    draw.text(
+        (35, 1820),
+        "STAY INFORMED  |  NEWS BRIEFING",
+        font=get_font(24, True),
+        fill=(230, 238, 250),
+    )
+
+    output = VIDEO_DIR / f"background_{index:02}.png"
+    canvas.save(output)
+    return output
 
 
-# --------------------------------------------------
-# VOICE AND CAPTIONS
-# --------------------------------------------------
+# ==================================================
+# VOICE GENERATION
+# ==================================================
 
 async def create_voice(script, path):
-    speech = edge_tts.Communicate(
+    communicator = edge_tts.Communicate(
         script,
         VOICE,
         rate="-5%",
     )
-    await speech.save(str(path))
+    await communicator.save(str(path))
 
+
+# ==================================================
+# CAPTIONS WITH EXPLICIT BOTTOM POSITIONING
+# ==================================================
 
 def timestamp(seconds):
     millis = max(0, int(seconds * 1000))
     hours, millis = divmod(millis, 3600000)
     minutes, millis = divmod(millis, 60000)
-    seconds_part, millis = divmod(millis, 1000)
+    secs, millis = divmod(millis, 1000)
 
     return (
         f"{hours:02}:{minutes:02}:"
-        f"{seconds_part:02},{millis:03}"
+        f"{secs:02},{millis:03}"
     )
 
 
 def create_srt(script, duration, path):
     words = script.split()
+
     if not words:
         return False
 
@@ -478,9 +487,9 @@ def create_srt(script, duration, path):
     return True
 
 
-# --------------------------------------------------
-# FFMPEG VIDEO RENDERING
-# --------------------------------------------------
+# ==================================================
+# FFMPEG HELPERS
+# ==================================================
 
 def run_command(command):
     subprocess.run(
@@ -493,15 +502,27 @@ def run_command(command):
     )
 
 
-def make_video(headline, script, entry, index):
-    VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+def filter_path(path):
+    # Escape characters used by FFmpeg filter syntax.
+    return (
+        path.resolve().as_posix()
+        .replace("\\", "\\\\")
+        .replace(":", r"\:")
+        .replace("'", r"\'")
+        .replace(",", r"\,")
+        .replace("[", r"\[")
+        .replace("]", r"\]")
+    )
 
+
+def make_video(headline, script, entry, index):
     audio_path = VIDEO_DIR / f"voice_{index:02}.mp3"
     srt_path = VIDEO_DIR / f"captions_{index:02}.srt"
     video_path = VIDEO_DIR / f"news_{index:02}.mp4"
     ticker_path = VIDEO_DIR / f"ticker_{index:02}.txt"
 
     story_image = get_story_image(entry)
+
     background_path = create_background(
         headline,
         story_image,
@@ -526,40 +547,48 @@ def make_video(headline, script, entry, index):
     duration = float(probe.stdout.strip())
 
     if duration < 20 or duration > 65:
-        print("VIDEO FAILED: voice duration outside 20–65 seconds.")
+        print("Video skipped: voice duration outside 20–65 seconds.")
         return False
 
-    create_srt(script, duration, srt_path)
+    if not create_srt(script, duration, srt_path):
+        return False
 
     ticker_path.write_text(
         "LATEST USA NEWS   |   DIGITAL ORBIT   |   STAY INFORMED",
         encoding="utf-8",
     )
 
-    # The ticker scrolls from right to left.
-    subtitle_path = srt_path.as_posix().replace("\\", "/")
-    ticker_file = ticker_path.as_posix().replace("\\", "/")
+    srt = filter_path(srt_path)
+    ticker = filter_path(ticker_path)
 
-    subtitle_filter = (
-        f"subtitles=filename='{subtitle_path}':"
+    # Place subtitles in the dedicated lower caption panel.
+    subtitles_filter = (
+        f"subtitles=filename='{srt}':"
         "force_style='FontName=DejaVu Sans,"
-        "FontSize=18,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,BorderStyle=1,"
-        "Outline=2,Shadow=1,Alignment=2,"
-        "MarginV=235,MarginL=65,MarginR=65'"
+        "FontSize=17,"
+        "PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,"
+        "BorderStyle=1,"
+        "Outline=2,"
+        "Shadow=1,"
+        "Alignment=2,"
+        "MarginV=350,"
+        "MarginL=65,"
+        "MarginR=65'"
     )
 
+    # Scroll ticker horizontally in the red ticker band.
     ticker_filter = (
         "drawtext="
-        f"textfile='{ticker_file}':"
-        "fontcolor=white:fontsize=30:"
-        "x=w-mod(t*180\\,w+tw):"
-        "y=h-100:"
-        "box=1:boxcolor=0x06132B@0.96:"
-        "boxborderw=12"
+        f"textfile='{ticker}':"
+        "fontcolor=white:"
+        "fontsize=27:"
+        "x=w-mod(t*150\\,w+tw):"
+        "y=1700:"
+        "box=0"
     )
 
-    video_filter = f"{subtitle_filter},{ticker_filter}"
+    video_filter = f"{subtitles_filter},{ticker_filter}"
 
     run_command([
         "ffmpeg", "-y",
@@ -585,19 +614,24 @@ def make_video(headline, script, entry, index):
     return True
 
 
-# --------------------------------------------------
-# MAIN AUTOMATION
-# --------------------------------------------------
+# ==================================================
+# MAIN
+# ==================================================
 
 def main():
     keys = get_api_keys()
-    VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 
     if subprocess.run(
         ["ffmpeg", "-version"],
         capture_output=True,
     ).returncode != 0:
         raise RuntimeError("FFmpeg is not installed.")
+
+    if subprocess.run(
+        ["ffprobe", "-version"],
+        capture_output=True,
+    ).returncode != 0:
+        raise RuntimeError("FFprobe is not installed.")
 
     feed = feedparser.parse(RSS_URL)
 
@@ -614,10 +648,17 @@ def main():
 
         headline = (entry.get("title") or "").strip()
         link = (entry.get("link") or "").strip()
+
+        raw_summary = (
+            entry.get("summary")
+            or entry.get("description")
+            or ""
+        )
+
         summary = re.sub(
-            r"<[^>]+>",
+            r"\s+",
             " ",
-            html.unescape(entry.get("summary", "") or ""),
+            html.unescape(re.sub(r"<[^>]+>", " ", raw_summary)),
         ).strip()
 
         if not headline or not link or link in seen:
@@ -626,12 +667,13 @@ def main():
         seen.add(link)
 
         prompt = f"""
-Write an original 30–60 second English YouTube Shorts news script
+Write an original 30–60 second English news script
 for a general US audience, aiming for 90–130 words.
 
-Use only the information in the headline and summary.
+Use only the supplied headline and summary.
 Do not invent facts, quotes, dates, or claim independent verification.
-If information is insufficient, reply exactly SKIP_STORY.
+Do not add details absent from the source.
+If the information is insufficient, reply exactly SKIP_STORY.
 
 HEADLINE: {headline}
 RSS SUMMARY: {summary}
