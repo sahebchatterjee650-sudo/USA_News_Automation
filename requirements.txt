@@ -2,3 +2,4 @@ feedparser
 google-genai
 edge-tts
 Pillow
+requests
