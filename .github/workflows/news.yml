@@ -53,7 +53,7 @@ jobs:
           python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('All required packages are ready.')"
 
       - name: Generate news scripts and videos
-        timeout-minutes: 30
+        timeout-minutes: 60
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
