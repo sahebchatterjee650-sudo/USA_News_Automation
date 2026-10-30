@@ -4,6 +4,8 @@ import re
 import html
 import asyncio
 import subprocess
+import time
+import random
 from pathlib import Path
 from io import BytesIO
 from urllib.parse import urlparse
@@ -27,7 +29,7 @@ LOGO_FILE = Path("digital_orbit_logo.png")
 BANNER_FILE = Path("digital_orbit_banner.png")
 
 MODEL = "gemini-3.8-flash"
-VOICE = "en-US-AndrewNeural"
+VOICES = ["en-US-AndrewNeural", "en-US-JennyNeural"]  # male, female, male, repeat
 
 MAX_STORIES = 3
 WIDTH, HEIGHT = 1080, 1920
@@ -67,45 +69,38 @@ def get_api_keys():
 
 def generate_script(keys, prompt):
     last_error = ""
-
-    for slot, key in enumerate(keys, start=1):
-        try:
-            client = genai.Client(api_key=key)
-
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt,
-            )
-
-            script = (response.text or "").strip()
-
-            if script:
-                print(f"Script generated using key slot {slot}.")
-                return script
-
-        except Exception as exc:
-            last_error = str(exc)
-            low = last_error.lower()
-
-            retryable = any(term in low for term in (
-                "429",
-                "resource_exhausted",
-                "quota exceeded",
-                "rate limit",
-                "503",
-                "unavailable",
-                "server disconnected",
-                "deadline exceeded",
-            ))
-
-            if retryable:
-                print(f"Key slot {slot} unavailable; trying next key.")
-                continue
-
-            print(f"AI error for key slot {slot}: {last_error[:250]}")
-            break
-
-    print("AI generation failed:", last_error[:300])
+    for attempt in range(3):
+        for slot, key in enumerate(keys, start=1):
+            try:
+                client = genai.Client(api_key=key)
+                response = client.models.generate_content(
+                    model=MODEL,
+                    contents=prompt,
+                )
+                script = (response.text or "").strip()
+                if script:
+                    print(f"Script generated using key slot {slot}.")
+                    return script
+                last_error = "Empty response from model."
+            except Exception as exc:
+                last_error = str(exc)
+                low = last_error.lower()
+                retryable = any(term in low for term in (
+                    "429", "503", "unavailable", "resource_exhausted",
+                    "quota exceeded", "rate limit", "server disconnected",
+                    "deadline exceeded", "temporarily",
+                ))
+                print(
+                    f"AI error on key {slot}, attempt "
+                    f"{attempt + 1}/3: {last_error[:180]}"
+                )
+                if not retryable:
+                    return ""
+        if attempt < 2:
+            delay = (2 ** attempt) * 5
+            print(f"Retrying AI generation in {delay}s.")
+            time.sleep(delay)
+    print("AI generation failed after retries:", last_error[:300])
     return ""
 
 
@@ -437,10 +432,10 @@ def create_background(headline, story_image, index):
 # VOICE GENERATION
 # ==================================================
 
-async def create_voice(script, path):
+async def create_voice(script, path, voice):
     communicator = edge_tts.Communicate(
         script,
-        VOICE,
+        voice,
         rate="-5%",
     )
     await communicator.save(str(path))
@@ -469,8 +464,8 @@ def create_srt(script, duration, path):
         return False
 
     chunks = [
-        words[i:i + 6]
-        for i in range(0, len(words), 6)
+        words[i:i + 5]
+        for i in range(0, len(words), 5)
     ]
 
     with open(path, "w", encoding="utf-8") as file:
@@ -529,7 +524,9 @@ def make_video(headline, script, entry, index):
         index,
     )
 
-    asyncio.run(create_voice(script, audio_path))
+    voice = VOICES[(index - 1) % len(VOICES)]
+    print(f"Using voice for video {index}: {voice}")
+    asyncio.run(create_voice(script, audio_path, voice))
 
     probe = subprocess.run(
         [
@@ -565,7 +562,7 @@ def make_video(headline, script, entry, index):
     subtitles_filter = (
         f"subtitles=filename='{srt}':"
         "force_style='FontName=DejaVu Sans,"
-        "FontSize=17,"
+        "FontSize=30,"
         "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,"
         "BorderStyle=1,"
@@ -588,7 +585,11 @@ def make_video(headline, script, entry, index):
         "box=0"
     )
 
-    video_filter = f"{subtitles_filter},{ticker_filter}"
+    video_filter = (
+        "zoompan=z='min(zoom+0.00025,1.035)':d=1:"
+        "s=1080x1920:fps=25,"
+        f"{subtitles_filter},{ticker_filter}"
+    )
 
     run_command([
         "ffmpeg", "-y",
