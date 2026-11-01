@@ -9,18 +9,12 @@ from pathlib import Path
 
 import feedparser
 import edge_tts
-from PIL import (
-    Image,
-    ImageDraw,
-    ImageFont,
-    ImageOps,
-    ImageFilter
-)
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
 
 # ==================================================
 # DIGITAL ORBIT - USA NEWS SHORTS
-# Banner Background + Large, Readable Subtitles
+# Banner Background + Fixed Position ASS Subtitles
 # ==================================================
 
 RSS_URL = "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
@@ -119,7 +113,7 @@ def generate_script(keys, prompt):
                 print(
                     "API error:",
                     code,
-                    str(error)[:200]
+                    str(error)[:250]
                 )
 
                 if code == 429:
@@ -188,9 +182,6 @@ def create_background(headline, index):
 
     if banner is not None:
 
-        # Use the existing DIGITAL ORBIT banner
-        # as the complete video background.
-
         background = ImageOps.fit(
             banner,
             (WIDTH, HEIGHT),
@@ -217,9 +208,7 @@ def create_background(headline, index):
 
     else:
 
-        print(
-            "WARNING: digital_orbit_banner.png not found."
-        )
+        print("WARNING: digital_orbit_banner.png not found.")
 
         background = Image.new(
             "RGB",
@@ -236,7 +225,7 @@ def create_background(headline, index):
 
     od = ImageDraw.Draw(overlay)
 
-    # Header
+    # Header panel
     od.rectangle(
         (0, 0, WIDTH, 275),
         fill=(2, 10, 28, 205)
@@ -251,7 +240,7 @@ def create_background(headline, index):
         width=4
     )
 
-    # Footer
+    # Footer panel
     od.rectangle(
         (0, 1620, WIDTH, HEIGHT),
         fill=(2, 8, 22, 220)
@@ -426,37 +415,37 @@ async def create_voice(script, path):
 
 
 # ==================================================
-# SUBTITLE TIMESTAMP
+# SUBTITLE TIME
 # ==================================================
 
-def timestamp(seconds):
+def ass_timestamp(seconds):
 
-    millis = max(0, int(seconds * 1000))
+    centiseconds = max(0, int(seconds * 100))
 
-    hours, millis = divmod(millis, 3600000)
-    minutes, millis = divmod(millis, 60000)
-    secs, millis = divmod(millis, 1000)
+    hours, centiseconds = divmod(centiseconds, 360000)
+    minutes, centiseconds = divmod(centiseconds, 6000)
+    secs, centiseconds = divmod(centiseconds, 100)
 
     return (
-        f"{hours:02}:"
+        f"{hours}:"
         f"{minutes:02}:"
-        f"{secs:02},"
-        f"{millis:03}"
+        f"{secs:02}."
+        f"{centiseconds:02}"
     )
 
 
 # ==================================================
-# CREATE SUBTITLES - FIXED SIZE AND TWO LINES
+# CREATE ASS SUBTITLES
 # ==================================================
 
-def create_srt(script, duration, path):
+def create_ass(script, duration, path):
 
     words = script.split()
 
     if not words:
         return False
 
-    # Four words per caption, split into two lines.
+    # Four words per caption, two lines.
     chunks = [
         words[i:i + 4]
         for i in range(0, len(words), 4)
@@ -465,30 +454,68 @@ def create_srt(script, duration, path):
     with open(
         path,
         "w",
-        encoding="utf-8"
+        encoding="utf-8-sig"
     ) as file:
+
+        file.write("[Script Info]\n")
+        file.write("Title: Digital Orbit News\n")
+        file.write("ScriptType: v4.00+\n")
+        file.write("PlayResX: 1080\n")
+        file.write("PlayResY: 1920\n")
+        file.write("WrapStyle: 2\n")
+        file.write("ScaledBorderAndShadow: yes\n\n")
+
+        file.write("[V4+ Styles]\n")
+
+        file.write(
+            "Format: Name, Fontname, Fontsize, PrimaryColour, "
+            "SecondaryColour, OutlineColour, BackColour, Bold, "
+            "Italic, Underline, StrikeOut, ScaleX, ScaleY, "
+            "Spacing, Angle, BorderStyle, Outline, Shadow, "
+            "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        )
+
+        file.write(
+            "Style: News,DejaVu Sans,38,"
+            "&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
+            "-1,0,0,0,100,100,0,0,1,3,1,5,100,100,0,1\n\n"
+        )
+
+        file.write("[Events]\n")
+
+        file.write(
+            "Format: Layer, Start, End, Style, Name, MarginL, "
+            "MarginR, MarginV, Effect, Text\n"
+        )
 
         for i, chunk in enumerate(chunks):
 
             start = duration * i / len(chunks)
             end = duration * (i + 1) / len(chunks)
 
-            first_line = " ".join(chunk[:2])
-            second_line = " ".join(chunk[2:])
+            first = " ".join(chunk[:2])
+            second = " ".join(chunk[2:])
 
-            caption = first_line
+            caption = first
 
-            if second_line:
-                caption += "\n" + second_line
+            if second:
+                caption += r"\N" + second
 
-            file.write(f"{i + 1}\n")
-
-            file.write(
-                f"{timestamp(start)} --> "
-                f"{timestamp(end)}\n"
+            # Fixed position in the central subtitle panel.
+            # Position is measured on a 1080x1920 canvas.
+            caption = (
+                r"{\an5\pos(540,1080)}"
+                + caption
             )
 
-            file.write(caption + "\n\n")
+            file.write(
+                f"Dialogue: 0,"
+                f"{ass_timestamp(start)},"
+                f"{ass_timestamp(end)},"
+                f"News,,0,0,0,,{caption}\n"
+            )
+
+    print("ASS subtitles created:", path)
 
     return True
 
@@ -499,7 +526,7 @@ def create_srt(script, duration, path):
 
 def run_command(command):
 
-    subprocess.run(
+    result = subprocess.run(
         command,
         check=True,
         stdout=subprocess.PIPE,
@@ -507,6 +534,8 @@ def run_command(command):
         text=True,
         timeout=300
     )
+
+    return result
 
 
 def filter_path(path):
@@ -529,18 +558,16 @@ def filter_path(path):
 def make_video(headline, script, index):
 
     audio_path = VIDEO_DIR / f"voice_{index:02}.mp3"
-    srt_path = VIDEO_DIR / f"captions_{index:02}.srt"
+    ass_path = VIDEO_DIR / f"captions_{index:02}.ass"
     video_path = VIDEO_DIR / f"news_{index:02}.mp4"
-    ticker_path = VIDEO_DIR / f"ticker_{index:02}.txt"
 
-    # Banner background only.
-    # No RSS image or AI image.
-
+    # Existing banner background only.
     background_path = create_background(
         headline,
         index
     )
 
+    # Generate voice
     asyncio.run(
         create_voice(
             script,
@@ -548,6 +575,7 @@ def make_video(headline, script, index):
         )
     )
 
+    # Get voice duration
     probe = subprocess.run(
         [
             "ffprobe",
@@ -573,74 +601,56 @@ def make_video(headline, script, index):
 
         return False
 
-    if not create_srt(
+    # Create fixed-position ASS subtitles
+    if not create_ass(
         script,
         duration,
-        srt_path
+        ass_path
     ):
         return False
 
-    ticker_path.write_text(
-        "LATEST USA NEWS | DIGITAL ORBIT | STAY INFORMED",
-        encoding="utf-8"
-    )
+    ass = filter_path(ass_path)
 
-    srt = filter_path(srt_path)
-    ticker = filter_path(ticker_path)
-
-    # Smaller, centered subtitles with safe side margins.
+    # ASS subtitles use exact video coordinates.
     subtitles_filter = (
-        f"subtitles=filename='{srt}':"
-        "force_style='"
-        "FontName=DejaVu Sans,"
-        "FontSize=25,"
-        "Bold=1,"
-        "PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00101828,"
-        "BorderStyle=1,"
-        "Outline=2,"
-        "Shadow=1,"
-        "Alignment=5,"
-        "WrapStyle=2,"
-        "MarginV=0,"
-        "MarginL=130,"
-        "MarginR=130'"
+        f"ass=filename='{ass}':"
+        "fontsdir='/usr/share/fonts/truetype/dejavu'"
     )
 
-    ticker_filter = (
-        "drawtext="
-        f"textfile='{ticker}':"
-        "fontcolor=white:"
-        "fontsize=27:"
-        "x=w-mod(t*150\\,w+tw):"
-        "y=1700:"
-        "box=0"
-    )
+    # No scrolling ticker, so it cannot overlap the footer.
+    video_filter = subtitles_filter
 
-    video_filter = (
-        f"{subtitles_filter},{ticker_filter}"
-    )
+    try:
 
-    run_command([
-        "ffmpeg",
-        "-y",
-        "-loop", "1",
-        "-framerate", "25",
-        "-i", str(background_path),
-        "-i", str(audio_path),
-        "-vf", video_filter,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-tune", "stillimage",
-        "-pix_fmt", "yuv420p",
-        "-r", "25",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-t", str(duration),
-        "-shortest",
-        "-movflags", "+faststart",
-        str(video_path)
-    ])
+        run_command([
+            "ffmpeg",
+            "-y",
+            "-loop", "1",
+            "-framerate", "25",
+            "-i", str(background_path),
+            "-i", str(audio_path),
+            "-vf", video_filter,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "stillimage",
+            "-pix_fmt", "yuv420p",
+            "-r", "25",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-t", str(duration),
+            "-shortest",
+            "-movflags", "+faststart",
+            str(video_path)
+        ])
+
+    except subprocess.CalledProcessError as error:
+
+        print("FFmpeg video error:")
+
+        if error.stderr:
+            print(error.stderr[-3000:])
+
+        raise
 
     if (
         not video_path.exists()
@@ -685,6 +695,7 @@ def main():
     video_count = 0
     attempted = 0
 
+    # Save scripts immediately.
     def save_scripts():
 
         content = "\n\n---\n\n".join(scripts)
@@ -794,7 +805,7 @@ SOURCE:
             f"{script}"
         )
 
-        # Save immediately before video rendering.
+        # Save immediately before video creation.
         save_scripts()
 
         print("SCRIPT CREATED:", headline)
