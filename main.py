@@ -9,12 +9,18 @@ from pathlib import Path
 
 import feedparser
 import edge_tts
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageFont,
+    ImageOps,
+    ImageFilter
+)
 from google import genai
 
 # ==================================================
 # DIGITAL ORBIT - USA NEWS SHORTS
-# Banner Background + Large Subtitles
+# Banner Background + Large, Readable Subtitles
 # ==================================================
 
 RSS_URL = "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
@@ -440,7 +446,7 @@ def timestamp(seconds):
 
 
 # ==================================================
-# CREATE SUBTITLES
+# CREATE SUBTITLES - FIXED SIZE AND TWO LINES
 # ==================================================
 
 def create_srt(script, duration, path):
@@ -450,7 +456,7 @@ def create_srt(script, duration, path):
     if not words:
         return False
 
-    # Four words per subtitle screen
+    # Four words per caption, split into two lines.
     chunks = [
         words[i:i + 4]
         for i in range(0, len(words), 4)
@@ -467,6 +473,14 @@ def create_srt(script, duration, path):
             start = duration * i / len(chunks)
             end = duration * (i + 1) / len(chunks)
 
+            first_line = " ".join(chunk[:2])
+            second_line = " ".join(chunk[2:])
+
+            caption = first_line
+
+            if second_line:
+                caption += "\n" + second_line
+
             file.write(f"{i + 1}\n")
 
             file.write(
@@ -474,9 +488,7 @@ def create_srt(script, duration, path):
                 f"{timestamp(end)}\n"
             )
 
-            file.write(
-                " ".join(chunk) + "\n\n"
-            )
+            file.write(caption + "\n\n")
 
     return True
 
@@ -576,22 +588,23 @@ def make_video(headline, script, index):
     srt = filter_path(srt_path)
     ticker = filter_path(ticker_path)
 
-    # Large subtitles in the middle of the banner.
+    # Smaller, centered subtitles with safe side margins.
     subtitles_filter = (
         f"subtitles=filename='{srt}':"
         "force_style='"
         "FontName=DejaVu Sans,"
-        "FontSize=43,"
+        "FontSize=25,"
         "Bold=1,"
         "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00101828,"
         "BorderStyle=1,"
-        "Outline=3,"
+        "Outline=2,"
         "Shadow=1,"
         "Alignment=5,"
+        "WrapStyle=2,"
         "MarginV=0,"
-        "MarginL=90,"
-        "MarginR=90'"
+        "MarginL=130,"
+        "MarginR=130'"
     )
 
     ticker_filter = (
