@@ -3,6 +3,7 @@ name: USA News Automation
 
 on:
   workflow_dispatch:
+
   schedule:
     # Eastern Daylight Time (EDT)
     - cron: '0 13 * * *'
@@ -24,13 +25,15 @@ concurrency:
 jobs:
   collect-news:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
-        timeout-minutes: 2
+        timeout-minutes: 5
 
+      # 2. Set batch configuration
       - name: Set batch configuration
         id: batch
         env:
@@ -76,6 +79,7 @@ jobs:
           echo "ET release: $PUBLISH_TIME"
           echo "ET hour: $ET_HOUR"
 
+      # 3. Set up Python
       - name: Set up Python
         if: env.RUN_BATCH == 'true'
         uses: actions/setup-python@v5
@@ -83,9 +87,10 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
-        timeout-minutes: 3
+        timeout-minutes: 5
 
-       - name: Install FFmpeg
+      # 4. Install FFmpeg
+      - name: Install FFmpeg
         if: env.RUN_BATCH == 'true'
         timeout-minutes: 25
         run: |
@@ -94,13 +99,15 @@ jobs:
           ffmpeg -version
           ffprobe -version
 
+      # 5. Install Python dependencies
       - name: Install Python dependencies
         if: env.RUN_BATCH == 'true'
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      # 6. Verify required tools
       - name: Verify required tools
         if: env.RUN_BATCH == 'true'
         run: |
@@ -109,6 +116,7 @@ jobs:
           ffprobe -version
           python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('All required packages are ready.')"
 
+      # 7. Generate 3 news videos
       - name: Generate news scripts and videos
         if: env.RUN_BATCH == 'true'
         timeout-minutes: 60
@@ -124,6 +132,7 @@ jobs:
         run: |
           python -u main.py
 
+      # 8. Upload videos to YouTube
       - name: Upload videos to YouTube privately
         if: env.RUN_BATCH == 'true' && success() && hashFiles('output_videos/*.mp4') != ''
         timeout-minutes: 30
@@ -135,6 +144,7 @@ jobs:
         run: |
           python -u youtube_upload.py
 
+      # 9. Save generated videos and scripts
       - name: Save generated scripts and videos
         if: always() && env.RUN_BATCH == 'true'
         uses: actions/upload-artifact@v4
