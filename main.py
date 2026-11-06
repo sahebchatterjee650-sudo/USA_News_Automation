@@ -2,9 +2,9 @@
 import os
 import re
 import html
+import time
 import asyncio
 import subprocess
-import time
 from pathlib import Path
 
 import feedparser
@@ -12,13 +12,16 @@ import edge_tts
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
 
-# ==================================================
-# DIGITAL ORBIT - USA NEWS SHORTS
-# Banner Background + Fixed Position ASS Subtitles
-# ==================================================
+# =========================================================
+# DIGITAL ORBIT - USA NEWS AUTOMATION
+# 3 videos per batch | 9 videos per day
+# Andrew + Jenny alternating voices
+# =========================================================
 
 RSS_URL = "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
-MODEL = "gemini-3.8-flash"
+
+# Keep the model configurable through GitHub Secrets/Variables
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 VIDEO_DIR = Path("output_videos")
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
@@ -28,10 +31,19 @@ BANNER_FILE = Path("digital_orbit_banner.png")
 LOGO_FILE = Path("digital_orbit_logo.png")
 
 MAX_STORIES = 3
+MAX_ATTEMPTS = 12
+
 WIDTH = 1080
 HEIGHT = 1920
 
-VOICE = "en-US-AndrewNeural"
+VOICES = [
+    "en-US-AndrewNeural",
+    "en-US-JennyNeural"
+]
+
+VOICE_OFFSET = int(os.getenv("VOICE_OFFSET", "0"))
+BATCH_NUMBER = os.getenv("BATCH_NUMBER", "1")
+ET_PUBLISH_TIME = os.getenv("ET_PUBLISH_TIME", "09:00")
 
 API_KEY_NAMES = [
     "GOOGLE_API_KEY_1",
@@ -43,21 +55,21 @@ API_KEY_NAMES = [
 EXHAUSTED_KEYS = set()
 
 
-# ==================================================
-# API KEYS
-# ==================================================
+# =========================================================
+# API KEY MANAGEMENT
+# =========================================================
 
 def get_api_keys():
     keys = []
 
     for name in API_KEY_NAMES:
-        value = os.environ.get(name, "").strip()
+        value = os.getenv(name, "").strip()
 
         if value and value not in keys:
             keys.append(value)
 
     if not keys:
-        raise RuntimeError("Google API keys missing.")
+        raise RuntimeError("No Google API keys found.")
 
     print("API keys loaded:", len(keys))
     return keys
@@ -78,23 +90,22 @@ def error_code(error):
     return 0
 
 
-# ==================================================
+# =========================================================
 # GEMINI SCRIPT GENERATION
-# ==================================================
+# =========================================================
 
 def generate_script(keys, prompt):
 
     for slot, key in enumerate(keys, 1):
 
         if key in EXHAUSTED_KEYS:
-            print("Key", slot, "already exhausted.")
             continue
 
-        for attempt in range(2):
+        client = genai.Client(api_key=key)
+
+        for attempt in range(3):
 
             try:
-                client = genai.Client(api_key=key)
-
                 response = client.models.generate_content(
                     model=MODEL,
                     contents=prompt
@@ -103,38 +114,42 @@ def generate_script(keys, prompt):
                 script = (response.text or "").strip()
 
                 if script:
-                    print("Script generated using key", slot)
+                    print("Script generated with API key:", slot)
                     return script
+
+                print("Empty Gemini response.")
 
             except Exception as error:
 
                 code = error_code(error)
 
                 print(
-                    "API error:",
+                    "Gemini error:",
                     code,
-                    str(error)[:250]
+                    str(error)[:300]
                 )
 
                 if code == 429:
                     EXHAUSTED_KEYS.add(key)
-                    print("Quota exhausted. Trying next key.")
+                    print("Quota exhausted. Trying next API key.")
                     break
 
-                if code in (500, 503) and attempt == 0:
-                    print("Temporary server error. Waiting 8 seconds.")
-                    time.sleep(8)
+                if code in (500, 503):
+                    wait_time = min(10 * (2 ** attempt), 60)
+                    print("Temporary server error. Waiting:", wait_time)
+                    time.sleep(wait_time)
                     continue
 
+                # Do not retry permanent errors indefinitely.
                 break
 
     print("All available API keys failed.")
     return ""
 
 
-# ==================================================
-# FONT
-# ==================================================
+# =========================================================
+# FONTS
+# =========================================================
 
 def get_font(size, bold=False):
 
@@ -156,9 +171,9 @@ def get_font(size, bold=False):
     return ImageFont.load_default()
 
 
-# ==================================================
-# LOAD LOCAL IMAGE
-# ==================================================
+# =========================================================
+# IMAGE LOADING
+# =========================================================
 
 def load_local_image(path):
 
@@ -172,16 +187,15 @@ def load_local_image(path):
     return None
 
 
-# ==================================================
-# BANNER BACKGROUND
-# ==================================================
+# =========================================================
+# BACKGROUND DESIGN
+# =========================================================
 
 def create_background(headline, index):
 
     banner = load_local_image(BANNER_FILE)
 
     if banner is not None:
-
         background = ImageOps.fit(
             banner,
             (WIDTH, HEIGHT),
@@ -192,23 +206,18 @@ def create_background(headline, index):
             ImageFilter.GaussianBlur(radius=5)
         )
 
-        dark_layer = Image.new(
+        dark = Image.new(
             "RGB",
             (WIDTH, HEIGHT),
             (2, 10, 28)
         )
 
-        background = Image.blend(
-            background,
-            dark_layer,
-            0.62
-        )
+        background = Image.blend(background, dark, 0.62)
 
-        print("Existing DIGITAL ORBIT banner loaded.")
+        print("Digital Orbit banner loaded.")
 
     else:
-
-        print("WARNING: digital_orbit_banner.png not found.")
+        print("WARNING: Banner not found.")
 
         background = Image.new(
             "RGB",
@@ -216,7 +225,6 @@ def create_background(headline, index):
             (4, 13, 32)
         )
 
-    # Transparent dark panels
     overlay = Image.new(
         "RGBA",
         (WIDTH, HEIGHT),
@@ -225,30 +233,22 @@ def create_background(headline, index):
 
     od = ImageDraw.Draw(overlay)
 
-    # Header panel
     od.rectangle(
         (0, 0, WIDTH, 275),
-        fill=(2, 10, 28, 205)
+        fill=(2, 10, 28, 220)
     )
 
-    # Subtitle panel
     od.rounded_rectangle(
         (38, 390, WIDTH - 38, 1500),
         radius=38,
-        fill=(3, 16, 39, 218),
+        fill=(3, 16, 39, 225),
         outline=(35, 150, 225, 255),
         width=4
     )
 
-    # Footer panel
     od.rectangle(
         (0, 1620, WIDTH, HEIGHT),
-        fill=(2, 8, 22, 220)
-    )
-
-    od.rectangle(
-        (0, 1620, WIDTH, 1635),
-        fill=(215, 30, 48, 255)
+        fill=(2, 8, 22, 225)
     )
 
     background = Image.alpha_composite(
@@ -258,11 +258,9 @@ def create_background(headline, index):
 
     draw = ImageDraw.Draw(background)
 
-    # Optional logo
     logo = load_local_image(LOGO_FILE)
 
     if logo is not None:
-
         logo.thumbnail(
             (145, 145),
             Image.Resampling.LANCZOS
@@ -300,7 +298,6 @@ def create_background(headline, index):
         fill="white"
     )
 
-    # Headline
     draw.text(
         (WIDTH // 2, 470),
         "NEWS HEADLINE",
@@ -310,28 +307,24 @@ def create_background(headline, index):
     )
 
     headline_font = get_font(39, True)
-
-    words = headline.upper().split()
     lines = []
     current = ""
 
-    for word in words:
+    for word in headline.upper().split():
 
         trial = (current + " " + word).strip()
 
-        width = draw.textbbox(
+        box = draw.textbbox(
             (0, 0),
             trial,
             font=headline_font
-        )[2]
+        )
 
-        if width <= WIDTH - 150:
+        if box[2] <= WIDTH - 150:
             current = trial
-
         else:
             if current:
                 lines.append(current)
-
             current = word
 
     if current:
@@ -340,7 +333,6 @@ def create_background(headline, index):
     y = 535
 
     for line in lines[:3]:
-
         draw.text(
             (WIDTH // 2, y),
             line,
@@ -348,7 +340,6 @@ def create_background(headline, index):
             fill="white",
             anchor="mt"
         )
-
         y += 58
 
     draw.line(
@@ -365,7 +356,6 @@ def create_background(headline, index):
         anchor="mm"
     )
 
-    # Footer
     draw.rectangle(
         (0, 1660, WIDTH, 1760),
         fill=(185, 25, 43)
@@ -393,30 +383,35 @@ def create_background(headline, index):
     )
 
     output = VIDEO_DIR / f"background_{index:02}.png"
-
     background.save(output)
 
     return output
 
 
-# ==================================================
+# =========================================================
 # VOICE GENERATION
-# ==================================================
+# =========================================================
 
-async def create_voice(script, path):
+async def create_voice(script, path, voice):
 
     communicator = edge_tts.Communicate(
         script,
-        VOICE,
+        voice,
         rate="-5%"
     )
 
     await communicator.save(str(path))
 
 
-# ==================================================
+def get_voice(index):
+
+    global_index = VOICE_OFFSET + index - 1
+    return VOICES[global_index % len(VOICES)]
+
+
+# =========================================================
 # SUBTITLE TIME
-# ==================================================
+# =========================================================
 
 def ass_timestamp(seconds):
 
@@ -434,9 +429,9 @@ def ass_timestamp(seconds):
     )
 
 
-# ==================================================
-# CREATE ASS SUBTITLES
-# ==================================================
+# =========================================================
+# CREATE SUBTITLES
+# =========================================================
 
 def create_ass(script, duration, path):
 
@@ -445,17 +440,13 @@ def create_ass(script, duration, path):
     if not words:
         return False
 
-    # Four words per caption, two lines.
+    # 4 words per caption.
     chunks = [
         words[i:i + 4]
         for i in range(0, len(words), 4)
     ]
 
-    with open(
-        path,
-        "w",
-        encoding="utf-8-sig"
-    ) as file:
+    with open(path, "w", encoding="utf-8-sig") as file:
 
         file.write("[Script Info]\n")
         file.write("Title: Digital Orbit News\n")
@@ -476,9 +467,9 @@ def create_ass(script, duration, path):
         )
 
         file.write(
-            "Style: News,DejaVu Sans,38,"
+            "Style: News,DejaVu Sans,42,"
             "&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
-            "-1,0,0,0,100,100,0,0,1,3,1,5,100,100,0,1\n\n"
+            "-1,0,0,0,100,100,0,0,1,3,1,5,80,80,0,1\n\n"
         )
 
         file.write("[Events]\n")
@@ -501,12 +492,14 @@ def create_ass(script, duration, path):
             if second:
                 caption += r"\N" + second
 
-            # Fixed position in the central subtitle panel.
-            # Position is measured on a 1080x1920 canvas.
+            # Escape ASS special characters.
             caption = (
-                r"{\an5\pos(540,1080)}"
-                + caption
+                caption.replace("\\", r"\\")
+                .replace("{", r"\{")
+                .replace("}", r"\}")
             )
+
+            caption = r"{\an5\pos(540,1080)}" + caption
 
             file.write(
                 f"Dialogue: 0,"
@@ -515,18 +508,17 @@ def create_ass(script, duration, path):
                 f"News,,0,0,0,,{caption}\n"
             )
 
-    print("ASS subtitles created:", path)
-
+    print("Subtitles created:", path)
     return True
 
 
-# ==================================================
+# =========================================================
 # FFMPEG HELPERS
-# ==================================================
+# =========================================================
 
 def run_command(command):
 
-    result = subprocess.run(
+    return subprocess.run(
         command,
         check=True,
         stdout=subprocess.PIPE,
@@ -534,8 +526,6 @@ def run_command(command):
         text=True,
         timeout=300
     )
-
-    return result
 
 
 def filter_path(path):
@@ -551,9 +541,9 @@ def filter_path(path):
     )
 
 
-# ==================================================
-# MAKE VIDEO
-# ==================================================
+# =========================================================
+# CREATE VIDEO
+# =========================================================
 
 def make_video(headline, script, index):
 
@@ -561,21 +551,23 @@ def make_video(headline, script, index):
     ass_path = VIDEO_DIR / f"captions_{index:02}.ass"
     video_path = VIDEO_DIR / f"news_{index:02}.mp4"
 
-    # Existing banner background only.
+    voice = get_voice(index)
+
+    print("Using voice:", voice)
+
     background_path = create_background(
         headline,
         index
     )
 
-    # Generate voice
     asyncio.run(
         create_voice(
             script,
-            audio_path
+            audio_path,
+            voice
         )
     )
 
-    # Get voice duration
     probe = subprocess.run(
         [
             "ffprobe",
@@ -593,32 +585,18 @@ def make_video(headline, script, index):
     duration = float(probe.stdout.strip())
 
     if duration < 20 or duration > 65:
-
-        print(
-            "Video skipped: invalid duration:",
-            duration
-        )
-
+        print("Invalid video duration:", duration)
         return False
 
-    # Create fixed-position ASS subtitles
-    if not create_ass(
-        script,
-        duration,
-        ass_path
-    ):
+    if not create_ass(script, duration, ass_path):
         return False
 
     ass = filter_path(ass_path)
 
-    # ASS subtitles use exact video coordinates.
-    subtitles_filter = (
+    video_filter = (
         f"ass=filename='{ass}':"
         "fontsdir='/usr/share/fonts/truetype/dejavu'"
     )
-
-    # No scrolling ticker, so it cannot overlap the footer.
-    video_filter = subtitles_filter
 
     try:
 
@@ -645,7 +623,7 @@ def make_video(headline, script, index):
 
     except subprocess.CalledProcessError as error:
 
-        print("FFmpeg video error:")
+        print("FFmpeg error:")
 
         if error.stderr:
             print(error.stderr[-3000:])
@@ -663,11 +641,18 @@ def make_video(headline, script, index):
     return True
 
 
-# ==================================================
+# =========================================================
 # MAIN PROGRAM
-# ==================================================
+# =========================================================
 
 def main():
+
+    print("===================================")
+    print("DIGITAL ORBIT USA NEWS")
+    print("Batch:", BATCH_NUMBER)
+    print("ET release:", ET_PUBLISH_TIME)
+    print("Voice offset:", VOICE_OFFSET)
+    print("===================================")
 
     keys = get_api_keys()
 
@@ -675,15 +660,11 @@ def main():
         ["ffmpeg", "-version"],
         ["ffprobe", "-version"]
     ):
-
         if subprocess.run(
             command,
             capture_output=True
         ).returncode != 0:
-
-            raise RuntimeError(
-                command[0] + " is not installed."
-            )
+            raise RuntimeError(command[0] + " is not installed.")
 
     feed = feedparser.parse(RSS_URL)
 
@@ -695,7 +676,6 @@ def main():
     video_count = 0
     attempted = 0
 
-    # Save scripts immediately.
     def save_scripts():
 
         content = "\n\n---\n\n".join(scripts)
@@ -714,7 +694,10 @@ def main():
 
     for entry in feed.entries:
 
-        if video_count >= MAX_STORIES or attempted >= 8:
+        if video_count >= MAX_STORIES:
+            break
+
+        if attempted >= MAX_ATTEMPTS:
             break
 
         headline = (
@@ -743,34 +726,28 @@ def main():
             )
         ).strip()
 
-        if (
-            not headline
-            or not link
-            or link in seen
-        ):
+        if not headline or not link or link in seen:
             continue
 
         seen.add(link)
         attempted += 1
 
         if len(summary) < 40:
-
-            print(
-                "Story skipped: insufficient summary:",
-                headline
-            )
-
+            print("Story skipped: insufficient summary:", headline)
             continue
 
         prompt = f"""
 Write an original 30–60 second English news script
-for a general US audience.
+for a general United States audience.
 
-Target length: 90 to 130 words.
+Target length: 90 to 120 words.
 
-Use only the supplied headline and summary.
-Do not invent facts, quotes, dates or sources.
+Use only the supplied headline and RSS summary.
+Do not invent facts, quotes, dates, statistics or sources.
 Do not claim independent verification.
+Use clear, natural American English.
+Make the opening engaging but factual.
+End with a short neutral closing sentence.
 
 If information is insufficient, reply exactly:
 SKIP_STORY
@@ -785,39 +762,41 @@ SOURCE:
 {link}
 """
 
-        script = generate_script(
-            keys,
-            prompt
-        )
+        script = generate_script(keys, prompt)
 
         if (
             not script
             or "SKIP_STORY" in script.upper()
             or len(script.split()) < 65
         ):
-
             print("Story skipped:", headline)
             continue
 
-        scripts.append(
-            f"HEADLINE: {headline}\n"
-            f"SOURCE: {link}\n\n"
-            f"{script}"
-        )
-
-        # Save immediately before video creation.
-        save_scripts()
-
-        print("SCRIPT CREATED:", headline)
+        # The next file number is based on successfully created videos.
+        next_index = video_count + 1
 
         try:
 
-            if make_video(
+            print("Creating video:", next_index)
+
+            success = make_video(
                 headline,
                 script,
-                len(scripts)
-            ):
+                next_index
+            )
+
+            if success:
+
                 video_count += 1
+
+                scripts.append(
+                    f"HEADLINE: {headline}\n"
+                    f"SOURCE: {link}\n"
+                    f"VOICE: {get_voice(next_index)}\n\n"
+                    f"{script}"
+                )
+
+                save_scripts()
 
         except Exception as error:
 
@@ -829,11 +808,17 @@ SOURCE:
 
     save_scripts()
 
-    print("================================")
-    print("FINISHED")
+    print("===================================")
+    print("BATCH FINISHED")
+    print("Batch number:", BATCH_NUMBER)
     print("Videos created:", video_count)
     print("Scripts saved:", len(scripts))
-    print("================================")
+    print("===================================")
+
+    if video_count == 0:
+        raise RuntimeError(
+            "No videos were created. Check Gemini, RSS and FFmpeg logs."
+        )
 
 
 if __name__ == "__main__":
