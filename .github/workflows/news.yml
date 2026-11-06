@@ -85,11 +85,11 @@ jobs:
           cache-dependency-path: requirements.txt
         timeout-minutes: 3
 
-      - name: Install FFmpeg
+       - name: Install FFmpeg
         if: env.RUN_BATCH == 'true'
-        timeout-minutes: 10
+        timeout-minutes: 25
         run: |
-          sudo apt-get update -qq
+          sudo apt-get update -qq -o Acquire::Retries=3
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version
           ffprobe -version
