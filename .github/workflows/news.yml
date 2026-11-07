@@ -25,38 +25,73 @@ concurrency:
 jobs:
   collect-news:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
 
     steps:
-      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
-        timeout-minutes: 5
+        timeout-minutes: 3
 
-      # 2. Set batch configuration
+      # =================================
+      # BATCH CONFIGURATION
+      # =================================
+
       - name: Set batch configuration
-        id: batch
         env:
           SCHEDULE_TIME: ${{ github.event.schedule }}
         run: |
-          ET_HOUR=$(TZ=America/New_York date +%H)
+          ET_OFFSET=$(TZ=America/New_York date +%z)
 
-          if [ "$SCHEDULE_TIME" = "" ]; then
-            echo "Manual run detected. Defaulting to batch 1."
+          BATCH=0
+
+          if [ -z "$SCHEDULE_TIME" ]; then
+            echo "Manual run detected."
             BATCH=1
-
-          elif [ "$ET_HOUR" = "09" ]; then
-            BATCH=1
-
-          elif [ "$ET_HOUR" = "13" ]; then
-            BATCH=2
-
-          elif [ "$ET_HOUR" = "17" ]; then
-            BATCH=3
 
           else
-            echo "This cron is not active in the current ET season."
-            echo "Skipping this run successfully."
+            case "$SCHEDULE_TIME" in
+
+              "0 13 * * *")
+                if [ "$ET_OFFSET" = "-0400" ]; then
+                  BATCH=1
+                fi
+                ;;
+
+              "0 17 * * *")
+                if [ "$ET_OFFSET" = "-0400" ]; then
+                  BATCH=2
+                fi
+                ;;
+
+              "0 21 * * *")
+                if [ "$ET_OFFSET" = "-0400" ]; then
+                  BATCH=3
+                fi
+                ;;
+
+              "0 14 * * *")
+                if [ "$ET_OFFSET" = "-0500" ]; then
+                  BATCH=1
+                fi
+                ;;
+
+              "0 18 * * *")
+                if [ "$ET_OFFSET" = "-0500" ]; then
+                  BATCH=2
+                fi
+                ;;
+
+              "0 22 * * *")
+                if [ "$ET_OFFSET" = "-0500" ]; then
+                  BATCH=3
+                fi
+                ;;
+
+            esac
+          fi
+
+          if [ "$BATCH" = "0" ]; then
+            echo "Inactive seasonal schedule."
             echo "RUN_BATCH=false" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -72,14 +107,23 @@ jobs:
             PUBLISH_TIME="17:00"
           fi
 
-          echo "ET_PUBLISH_TIME=$PUBLISH_TIME" >> "$GITHUB_ENV"
-          echo "VOICE_OFFSET=$(( (BATCH - 1) * 3 ))" >> "$GITHUB_ENV"
+          VOICE_OFFSET=$(( (BATCH - 1) * 3 ))
 
+          echo "ET_PUBLISH_TIME=$PUBLISH_TIME" >> "$GITHUB_ENV"
+          echo "VOICE_OFFSET=$VOICE_OFFSET" >> "$GITHUB_ENV"
+
+          echo "================================="
+          echo "USA NEWS AUTOMATION"
           echo "Batch: $BATCH"
           echo "ET release: $PUBLISH_TIME"
-          echo "ET hour: $ET_HOUR"
+          echo "ET offset: $ET_OFFSET"
+          echo "Voice offset: $VOICE_OFFSET"
+          echo "================================="
 
-      # 3. Set up Python
+      # =================================
+      # PYTHON SETUP
+      # =================================
+
       - name: Set up Python
         if: env.RUN_BATCH == 'true'
         uses: actions/setup-python@v5
@@ -89,34 +133,47 @@ jobs:
           cache-dependency-path: requirements.txt
         timeout-minutes: 5
 
-      # 4. Install FFmpeg
+      # =================================
+      # FFMPEG
+      # =================================
+
       - name: Install FFmpeg
         if: env.RUN_BATCH == 'true'
-        timeout-minutes: 25
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version
           ffprobe -version
 
-      # 5. Install Python dependencies
+      # =================================
+      # PYTHON DEPENDENCIES
+      # =================================
+
       - name: Install Python dependencies
         if: env.RUN_BATCH == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      # 6. Verify required tools
+      # =================================
+      # VERIFY TOOLS
+      # =================================
+
       - name: Verify required tools
         if: env.RUN_BATCH == 'true'
         run: |
           python --version
           ffmpeg -version
           ffprobe -version
+
           python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('All required packages are ready.')"
 
-      # 7. Generate 3 news videos
+      # =================================
+      # GENERATE VIDEOS
+      # =================================
+
       - name: Generate news scripts and videos
         if: env.RUN_BATCH == 'true'
         timeout-minutes: 60
@@ -125,33 +182,47 @@ jobs:
           GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
+
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
           VOICE_OFFSET: ${{ env.VOICE_OFFSET }}
+
           PYTHONUNBUFFERED: "1"
+
         run: |
           python -u main.py
 
-      # 8. Upload videos to YouTube
+      # =================================
+      # YOUTUBE UPLOAD
+      # =================================
+
       - name: Upload videos to YouTube privately
         if: env.RUN_BATCH == 'true' && success() && hashFiles('output_videos/*.mp4') != ''
         timeout-minutes: 30
         env:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
+
           PYTHONUNBUFFERED: "1"
+
         run: |
           python -u youtube_upload.py
 
-      # 9. Save generated videos and scripts
+      # =================================
+      # SAVE OUTPUT
+      # =================================
+
       - name: Save generated scripts and videos
         if: always() && env.RUN_BATCH == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: digital-orbit-news-${{ github.run_id }}-${{ github.run_attempt }}
+
           path: |
             scripts.txt
             output_videos/
+
           if-no-files-found: ignore
           retention-days: 90
