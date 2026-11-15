@@ -6,6 +6,10 @@ import time
 import asyncio
 import subprocess
 from pathlib import Path
+from io import BytesIO
+from urllib.parse import quote
+
+import requests
 
 import feedparser
 import edge_tts
@@ -227,11 +231,154 @@ def load_local_image(path):
     return None
 
 
+
+
+# =========================================================
+# NEWS IMAGE: LICENSED COMMONS IMAGE, THEN AI FALLBACK
+# =========================================================
+
+IMAGE_ATTRIBUTIONS = []
+
+def clean_image_query(headline):
+    words = re.findall(r"[A-Za-z0-9]{3,}", headline)
+    stop = {"with", "from", "after", "over", "into", "says", "said", "will", "what", "when", "where"}
+    words = [w for w in words if w.lower() not in stop]
+    return " ".join(words[:8]) or headline[:100]
+
+
+def download_commons_image(headline, index):
+    """Use only Commons images with reuse-friendly commercial licenses."""
+    query = clean_image_query(headline)
+    api = "https://commons.wikimedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "format": "json",
+        "generator": "search",
+        "gsrsearch": f"filetype:bitmap {query}",
+        "gsrnamespace": 6,
+        "gsrlimit": 8,
+        "prop": "imageinfo",
+        "iiprop": "url|extmetadata",
+        "iiurlwidth": 1200,
+    }
+
+    try:
+        response = requests.get(
+            api, params=params,
+            headers={"User-Agent": "DigitalOrbitNewsBot/1.0 (news video project)"},
+            timeout=25
+        )
+        response.raise_for_status()
+        pages = response.json().get("query", {}).get("pages", {})
+        allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
+        blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
+
+        for page in pages.values():
+            info = (page.get("imageinfo") or [{}])[0]
+            meta = info.get("extmetadata", {})
+            license_name = html.unescape(meta.get("LicenseShortName", {}).get("value", ""))
+            license_url = meta.get("LicenseUrl", {}).get("value", "")
+            normalized = license_name.lower()
+            if not any(term in normalized for term in allowed):
+                continue
+            if any(term in normalized for term in blocked):
+                continue
+
+            image_url = info.get("thumburl") or info.get("url")
+            if not image_url:
+                continue
+
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+            image = Image.open(BytesIO(img_response.content)).convert("RGB")
+            if image.width < 500 or image.height < 300:
+                continue
+
+            path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+            image.save(path, "JPEG", quality=90)
+            author = html.unescape(meta.get("Artist", {}).get("value", "Author not listed"))
+            title = html.unescape(page.get("title", "Wikimedia Commons image"))
+            attribution = f"{title} | {author} | {license_name} | {license_url}"
+            IMAGE_ATTRIBUTIONS.append(attribution)
+            print("Licensed Wikimedia image selected:", title, license_name)
+            return path
+
+    except Exception as error:
+        print("Commons image search failed:", str(error)[:250])
+
+    return None
+
+
+def generate_ai_image(headline, summary, index):
+    """Optional Hugging Face Inference Providers image generation fallback."""
+    token = os.getenv("HF_TOKEN", "").strip()
+    if not token:
+        print("HF_TOKEN not configured; AI image fallback unavailable.")
+        return None
+
+    model = os.getenv("HF_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+    endpoint = "https://router.huggingface.co/hf-inference/models/" + model
+    prompt = (
+        "Create a realistic editorial illustration for a United States news video. "
+        "Visual topic: " + headline + ". Context: " + summary[:500] +
+        ". No text, no logos, no watermark, no fake newspaper headlines. "
+        "Do not depict a specific real person unless clearly a public figure in a public news context. "
+        "Vertical 4:5 composition, professional photojournalistic style."
+    )
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {token}", "Accept": "image/*"},
+            json={"inputs": prompt},
+            timeout=180
+        )
+        if response.status_code != 200:
+            print("Hugging Face image API:", response.status_code, response.text[:500])
+            return None
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            print("AI image API returned non-image content.")
+            return None
+
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+        image.save(path, "JPEG", quality=90)
+        (VIDEO_DIR / f"news_image_{index:02}_NOTICE.txt").write_text(
+            "AI-generated illustrative image. It is not a photograph of the actual event.",
+            encoding="utf-8"
+        )
+        print("AI-generated illustrative image created.")
+        return path
+
+    except Exception as error:
+        print("AI image generation failed:", str(error)[:300])
+        return None
+
+
+def get_news_image(headline, summary, index):
+    image_path = download_commons_image(headline, index)
+    if image_path:
+        return image_path
+
+    print("No suitable licensed Commons image. Trying AI generation.")
+    return generate_ai_image(headline, summary, index)
+
+
+def save_image_attributions():
+    if IMAGE_ATTRIBUTIONS:
+        (VIDEO_DIR / "image_attributions.txt").write_text(
+            "\n".join(IMAGE_ATTRIBUTIONS),
+            encoding="utf-8"
+        )
+
+
+
 # =========================================================
 # DIGITAL ORBIT VIDEO BACKGROUND
 # =========================================================
 
-def create_background(headline, index):
+def create_background(headline, index, news_image=None):
 
     banner = load_local_image(BANNER_FILE)
 
@@ -411,6 +558,24 @@ def create_background(headline, index):
         width=3
     )
 
+    # Story-specific editorial image panel
+    if news_image is not None and Path(news_image).exists():
+        try:
+            photo = Image.open(news_image).convert("RGB")
+            photo = ImageOps.fit(
+                photo, (920, 600),
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.45)
+            )
+            background.paste(photo, (80, 820))
+            draw = ImageDraw.Draw(background)
+            draw.rounded_rectangle(
+                (80, 820, 1000, 1420),
+                radius=18, outline=(45, 210, 255), width=5
+            )
+        except Exception as error:
+            print("Could not place news image:", str(error)[:200])
+
     draw.text(
         (WIDTH // 2, 820),
         "LIVE NEWS CAPTIONS",
@@ -589,7 +754,7 @@ def create_ass(script, duration, path):
                 caption += r"\N" + second
 
             caption = (
-                r"{\an5\pos(540,1080)}"
+                r"{\an5\pos(540,1515)}"
                 + caption
             )
 
@@ -640,7 +805,7 @@ def filter_path(path):
 # MAKE VIDEO
 # =========================================================
 
-def make_video(headline, script, index):
+def make_video(headline, script, index, news_image=None):
 
     audio_path = VIDEO_DIR / f"voice_{index:02}.mp3"
 
@@ -654,7 +819,8 @@ def make_video(headline, script, index):
 
     background_path = create_background(
         headline,
-        index
+        index,
+        news_image
     )
 
     asyncio.run(
@@ -918,10 +1084,21 @@ SOURCE:
                 next_index
             )
 
+            news_image = get_news_image(
+                headline,
+                summary,
+                next_index
+            )
+
+            if news_image is None:
+                print("Story skipped: no suitable image and AI fallback unavailable:", headline)
+                continue
+
             success = make_video(
                 headline,
                 script,
-                next_index
+                next_index,
+                news_image
             )
 
             if success:
@@ -946,6 +1123,7 @@ SOURCE:
             )
 
     save_scripts()
+    save_image_attributions()
 
     print("===================================")
     print("BATCH FINISHED")
