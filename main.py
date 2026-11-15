@@ -577,7 +577,7 @@ def create_background(headline, index, news_image=None):
             print("Could not place news image:", str(error)[:200])
 
     draw.text(
-        (WIDTH // 2, 820),
+        (WIDTH // 2, 1445),
         "LIVE NEWS CAPTIONS",
         font=get_font(34, True),
         fill=(45, 210, 255),
