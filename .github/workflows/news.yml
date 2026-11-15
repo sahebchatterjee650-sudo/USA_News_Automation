@@ -182,6 +182,8 @@ jobs:
           GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_IMAGE_MODEL: black-forest-labs/FLUX.1-schnell
 
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
