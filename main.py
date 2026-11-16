@@ -15,6 +15,7 @@ import feedparser
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
+from huggingface_hub import InferenceClient
 
 
 # =========================================================
@@ -310,51 +311,45 @@ def download_commons_image(headline, index):
 
 
 def generate_ai_image(headline, summary, index):
-    """Optional Hugging Face Inference Providers image generation fallback."""
+    """Generate a story-specific image through Hugging Face Inference Providers."""
     token = os.getenv("HF_TOKEN", "").strip()
     if not token:
         print("HF_TOKEN not configured; AI image fallback unavailable.")
         return None
 
     model = os.getenv("HF_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
-    endpoint = "https://router.huggingface.co/hf-inference/models/" + model
     prompt = (
         "Create a realistic editorial illustration for a United States news video. "
         "Visual topic: " + headline + ". Context: " + summary[:500] +
         ". No text, no logos, no watermark, no fake newspaper headlines. "
-        "Do not depict a specific real person unless clearly a public figure in a public news context. "
-        "Vertical 4:5 composition, professional photojournalistic style."
+        "Use a documentary photojournalism look, accurate setting and relevant objects. "
+        "Do not invent a real person's likeness. Vertical 4:5 composition."
     )
 
     try:
-        response = requests.post(
-            endpoint,
-            headers={"Authorization": f"Bearer {token}", "Accept": "image/*"},
-            json={"inputs": prompt},
+        # Use the current Hugging Face Inference Providers router.
+        # provider="auto" selects an available provider for this model.
+        client = InferenceClient(
+            provider="auto",
+            api_key=token,
             timeout=180
         )
-        if response.status_code != 200:
-            print("Hugging Face image API:", response.status_code, response.text[:500])
-            return None
-        content_type = response.headers.get("content-type", "")
-        if not content_type.startswith("image/"):
-            print("AI image API returned non-image content.")
-            return None
-
-        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image = client.text_to_image(
+            prompt=prompt,
+            model=model
+        )
         path = VIDEO_DIR / f"news_image_{index:02}.jpg"
-        image.save(path, "JPEG", quality=90)
+        image.convert("RGB").save(path, "JPEG", quality=90)
         (VIDEO_DIR / f"news_image_{index:02}_NOTICE.txt").write_text(
             "AI-generated illustrative image. It is not a photograph of the actual event.",
             encoding="utf-8"
         )
-        print("AI-generated illustrative image created.")
+        print("AI-generated illustrative image created with Inference Providers:", model)
         return path
 
     except Exception as error:
-        print("AI image generation failed:", str(error)[:300])
+        print("Hugging Face Inference Providers image generation failed:", str(error)[:500])
         return None
-
 
 def get_news_image(headline, summary, index):
     image_path = download_commons_image(headline, index)
