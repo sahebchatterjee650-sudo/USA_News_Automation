@@ -84,7 +84,7 @@ def upload_video(youtube, video_path, publish_at):
 
 
 def main():
-    videos = sorted(VIDEO_DIR.glob("news_*.mp4"))[:3]
+    videos = sorted(VIDEO_DIR.glob("news_*.mp4"))
     if not videos:
         print("No news_*.mp4 videos found in output_videos/.")
         sys.exit(1)
