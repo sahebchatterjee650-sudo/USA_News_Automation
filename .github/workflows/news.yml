@@ -192,37 +192,5 @@ jobs:
         run: |
           python -u main.py
 
-      # =================================
-      # YOUTUBE UPLOAD
-      # =================================
-
-      - name: Upload videos to YouTube privately
-        if: env.RUN_BATCH == 'true' && success() && hashFiles('output_videos/*.mp4') != ''
-        timeout-minutes: 30
-        env:
-          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-
-          BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
-          ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
-
-          PYTHONUNBUFFERED: "1"
-
-        run: |
-          python -u youtube_upload.py
-
-      # =================================
-      # SAVE OUTPUT
-      # =================================
-
-      - name: Save generated scripts and videos
-        if: always() && env.RUN_BATCH == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: digital-orbit-news-${{ github.run_id }}-${{ github.run_attempt }}
-
-          path: |
-            scripts.txt
-            output_videos/
-
-          if-no-files-found: ignore
-          retention-days: 90
+      # Videos and scripts remain only on this temporary runner.
+      # No YouTube upload, Google Cloud OAuth, or persistent artifact storage.
