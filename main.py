@@ -35,8 +35,8 @@ OUTPUT_FILE = Path("scripts.txt")
 BANNER_FILE = Path("digital_orbit_banner.png")
 LOGO_FILE = Path("digital_orbit_logo.png")
 
-MAX_STORIES = 3
-MAX_ATTEMPTS = 8
+MAX_STORIES = int(os.getenv("MAX_STORIES", "6"))
+MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "20"))
 
 WIDTH = 1080
 HEIGHT = 1920
