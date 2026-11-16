@@ -35,7 +35,7 @@ BANNER_FILE = Path("digital_orbit_banner.png")
 LOGO_FILE = Path("digital_orbit_logo.png")
 
 MAX_STORIES = 3
-MAX_ATTEMPTS = 12
+MAX_ATTEMPTS = 8
 
 WIDTH = 1080
 HEIGHT = 1920
@@ -111,7 +111,7 @@ def generate_script(keys, prompt):
 
         client = genai.Client(api_key=key)
 
-        for attempt in range(3):
+        for attempt in range(2):
 
             try:
 
@@ -155,10 +155,7 @@ def generate_script(keys, prompt):
 
                 if code in (500, 503):
 
-                    wait_time = min(
-                        10 * (2 ** attempt),
-                        60
-                    )
+                    wait_time = 8 * (attempt + 1)
 
                     print(
                         "Temporary server error. Waiting:",
@@ -645,13 +642,46 @@ def create_background(headline, index, news_image=None):
 
 async def create_voice(script, path, voice):
 
-    communicator = edge_tts.Communicate(
-        script,
-        voice,
-        rate="-5%"
-    )
+    # Edge TTS occasionally returns an empty response or a transient
+    # network error. Retry a few times before marking this story failed.
+    last_error = None
 
-    await communicator.save(str(path))
+    for attempt in range(3):
+
+        try:
+            if path.exists():
+                path.unlink()
+
+            communicator = edge_tts.Communicate(
+                script,
+                voice,
+                rate="-5%"
+            )
+
+            await asyncio.wait_for(
+                communicator.save(str(path)),
+                timeout=150
+            )
+
+            if path.exists() and path.stat().st_size > 5000:
+                return
+
+            raise RuntimeError("Edge TTS returned no audio or an empty audio file.")
+
+        except Exception as error:
+            last_error = error
+            print(
+                f"Edge TTS attempt {attempt + 1}/3 failed:",
+                str(error)[:300]
+            )
+
+            if path.exists():
+                path.unlink()
+
+            if attempt < 2:
+                await asyncio.sleep(4 * (attempt + 1))
+
+    raise RuntimeError(f"Edge TTS failed after 3 attempts: {last_error}")
 
 
 def get_voice(index):
