@@ -192,5 +192,17 @@ jobs:
         run: |
           python -u main.py
 
-      # Videos and scripts remain only on this temporary runner.
-      # No YouTube upload, Google Cloud OAuth, or persistent artifact storage.
+      # =================================
+      # TEMPORARY DOWNLOADABLE OUTPUT
+      # =================================
+
+      - name: Save videos and scripts for 1 day
+        if: always() && env.RUN_BATCH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digital-orbit-news-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            scripts.txt
+            output_videos/
+          if-no-files-found: ignore
+          retention-days: 1
