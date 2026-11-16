@@ -15,7 +15,6 @@ import feedparser
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
-from huggingface_hub import InferenceClient
 
 
 # =========================================================
