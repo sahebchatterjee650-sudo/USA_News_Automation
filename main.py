@@ -93,6 +93,12 @@ def error_code(error):
     if "503" in message or "UNAVAILABLE" in message:
         return 503
 
+    if "504" in message or "DEADLINE_EXCEEDED" in message:
+        return 504
+
+    if "408" in message or "TIMEOUT" in message or "TIMED OUT" in message:
+        return 408
+
     if "500" in message or "INTERNAL" in message:
         return 500
 
@@ -114,7 +120,7 @@ def generate_script(keys, prompt):
         # the entire 60-minute GitHub Actions job.
         client = genai.Client(
             api_key=key,
-            http_options=types.HttpOptions(timeout=30000)
+            http_options=types.HttpOptions(timeout=60000)
         )
 
         for attempt in range(2):
@@ -159,11 +165,11 @@ def generate_script(keys, prompt):
 
                     break
 
-                if code in (500, 503):
+                if code in (408, 500, 503, 504):
 
                     # Short bounded backoff. Each HTTP request itself has
                     # a 30-second timeout configured above.
-                    wait_time = 5 * (attempt + 1)
+                    wait_time = 8 * (attempt + 1)
 
                     print(
                         "Temporary server error. Waiting:",
