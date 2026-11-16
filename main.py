@@ -253,152 +253,271 @@ def load_local_image(path):
 
 IMAGE_ATTRIBUTIONS = []
 
-def clean_image_query(headline):
-    words = re.findall(r"[A-Za-z0-9]{3,}", headline)
-    stop = {"with", "from", "after", "over", "into", "says", "said", "will", "what", "when", "where"}
-    words = [w for w in words if w.lower() not in stop]
-    return " ".join(words[:8]) or headline[:100]
+def clean_image_query(headline, summary=""):
+    """Build short, topical search terms from both the headline and RSS summary."""
+    text = f"{headline} {summary}"
+    words = re.findall(r"[A-Za-z0-9]{3,}", text)
+    stop = {
+        "with", "from", "after", "over", "into", "says", "said", "will",
+        "what", "when", "where", "could", "would", "should", "their",
+        "about", "this", "that", "have", "been", "were", "they", "them",
+        "than", "more", "news", "latest", "update"
+    }
+    result = []
+    for word in words:
+        if word.lower() not in stop and word.lower() not in {x.lower() for x in result}:
+            result.append(word)
+        if len(result) >= 10:
+            break
+    return " ".join(result) or headline[:100]
 
 
-def download_openverse_image(headline, index):
-    """Find openly licensed images; use only CC0, public-domain, CC BY or CC BY-SA."""
-    query = clean_image_query(headline)
+def image_search_queries(headline, summary):
+    """Use several query variants so one poor headline search does not end the search."""
+    primary = clean_image_query(headline, summary)
+    headline_only = clean_image_query(headline)
+    summary_only = clean_image_query(summary) if summary else ""
+    queries = [primary, headline_only, summary_only]
+    unique = []
+    for query in queries:
+        query = query.strip()
+        if query and query.lower() not in [q.lower() for q in unique]:
+            unique.append(query)
+    return unique[:3]
+
+
+def download_openverse_image(headline, summary, index):
+    """Find openly licensed editorial images. Only permissive reuse licenses are accepted."""
     api = "https://api.openverse.org/v1/images/"
-    params = {
-        "q": query,
-        "license": "cc0,pdm,by,by-sa",
-        "page_size": 20,
-        "mature": "false",
-        "filter_dead": "true",
-    }
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
 
-    try:
-        response = requests.get(
-            api,
-            params=params,
-            headers={"User-Agent": "DigitalOrbitNewsBot/1.0 (news video project)"},
-            timeout=30
-        )
-        response.raise_for_status()
-        results = response.json().get("results", [])
+    for query in image_search_queries(headline, summary):
+        params = {
+            "q": query,
+            "license": "cc0,pdm,by,by-sa",
+            "page_size": 30,
+            "mature": "false",
+            "filter_dead": "true",
+        }
+        try:
+            response = requests.get(api, params=params, headers=headers, timeout=25)
+            response.raise_for_status()
+            results = response.json().get("results", [])
 
-        for item in results:
-            license_code = (item.get("license") or "").lower()
-            if license_code not in {"cc0", "pdm", "by", "by-sa"}:
-                continue
+            for item in results:
+                license_code = (item.get("license") or "").lower()
+                if license_code not in {"cc0", "pdm", "by", "by-sa"}:
+                    continue
 
-            image_url = item.get("url") or item.get("thumbnail")
-            if not image_url:
-                continue
+                image_url = item.get("url") or item.get("thumbnail")
+                if not image_url:
+                    continue
 
-            image_response = requests.get(
-                image_url,
-                headers={"User-Agent": "DigitalOrbitNewsBot/1.0"},
-                timeout=35
-            )
-            image_response.raise_for_status()
-            image = Image.open(BytesIO(image_response.content)).convert("RGB")
-            if image.width < 500 or image.height < 300:
-                continue
+                try:
+                    image_response = requests.get(
+                        image_url, headers=headers, timeout=25
+                    )
+                    image_response.raise_for_status()
+                    image = Image.open(BytesIO(image_response.content)).convert("RGB")
+                    if image.width < 500 or image.height < 300:
+                        continue
 
-            path = VIDEO_DIR / f"news_image_{index:02}.jpg"
-            image.save(path, "JPEG", quality=90)
+                    path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+                    image.save(path, "JPEG", quality=91)
 
-            title = html.unescape(item.get("title") or "Untitled image")
-            creator = html.unescape(item.get("creator") or "Creator not listed")
-            license_url = item.get("license_url") or ""
-            landing = item.get("foreign_landing_url") or ""
-            attribution = (
-                f"{title} | {creator} | CC {license_code.upper()} "
-                f"{item.get('license_version') or ''} | {license_url} | {landing}"
-            )
-            IMAGE_ATTRIBUTIONS.append(attribution)
-            print("Openverse image selected:", title, "license:", license_code)
-            return path
+                    title = html.unescape(item.get("title") or "Untitled image")
+                    creator = html.unescape(item.get("creator") or "Creator not listed")
+                    license_url = item.get("license_url") or ""
+                    landing = item.get("foreign_landing_url") or ""
+                    IMAGE_ATTRIBUTIONS.append(
+                        f"{title} | {creator} | CC {license_code.upper()} "
+                        f"{item.get('license_version') or ''} | {license_url} | {landing}"
+                    )
+                    print("Openverse licensed image selected:", title, "license:", license_code)
+                    return path
+                except Exception as image_error:
+                    print("Openverse candidate rejected:", str(image_error)[:160])
 
-    except Exception as error:
-        print("Openverse image search failed:", str(error)[:300])
+        except Exception as error:
+            print("Openverse search failed for query:", query, str(error)[:180])
 
     return None
 
 
-def download_commons_image(headline, index):
-    """Fallback: use only reuse-friendly Wikimedia Commons images."""
-    query = clean_image_query(headline)
+def download_commons_image(headline, summary, index):
+    """Fallback search on Wikimedia Commons; keep license and creator attribution."""
     api = "https://commons.wikimedia.org/w/api.php"
-    params = {
-        "action": "query",
-        "format": "json",
-        "generator": "search",
-        "gsrsearch": f"filetype:bitmap {query}",
-        "gsrnamespace": 6,
-        "gsrlimit": 8,
-        "prop": "imageinfo",
-        "iiprop": "url|extmetadata",
-        "iiurlwidth": 1200,
-    }
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
+    allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
+    blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
 
-    try:
-        response = requests.get(
-            api, params=params,
-            headers={"User-Agent": "DigitalOrbitNewsBot/1.0 (news video project)"},
-            timeout=25
-        )
-        response.raise_for_status()
-        pages = response.json().get("query", {}).get("pages", {})
-        allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
-        blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
+    for query in image_search_queries(headline, summary):
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {query}",
+            "gsrnamespace": 6,
+            "gsrlimit": 15,
+            "prop": "imageinfo",
+            "iiprop": "url|extmetadata",
+            "iiurlwidth": 1400,
+        }
+        try:
+            response = requests.get(api, params=params, headers=headers, timeout=25)
+            response.raise_for_status()
+            pages = response.json().get("query", {}).get("pages", {})
 
-        for page in pages.values():
-            info = (page.get("imageinfo") or [{}])[0]
-            meta = info.get("extmetadata", {})
-            license_name = html.unescape(meta.get("LicenseShortName", {}).get("value", ""))
-            license_url = meta.get("LicenseUrl", {}).get("value", "")
-            normalized = license_name.lower()
-            if not any(term in normalized for term in allowed):
-                continue
-            if any(term in normalized for term in blocked):
-                continue
+            for page in pages.values():
+                info = (page.get("imageinfo") or [{}])[0]
+                meta = info.get("extmetadata", {})
+                license_name = html.unescape(
+                    meta.get("LicenseShortName", {}).get("value", "")
+                )
+                normalized = license_name.lower()
+                if not any(term in normalized for term in allowed):
+                    continue
+                if any(term in normalized for term in blocked):
+                    continue
 
-            image_url = info.get("thumburl") or info.get("url")
-            if not image_url:
-                continue
+                image_url = info.get("thumburl") or info.get("url")
+                if not image_url:
+                    continue
 
-            img_response = requests.get(image_url, timeout=30)
-            img_response.raise_for_status()
-            image = Image.open(BytesIO(img_response.content)).convert("RGB")
-            if image.width < 500 or image.height < 300:
-                continue
+                try:
+                    img_response = requests.get(image_url, headers=headers, timeout=25)
+                    img_response.raise_for_status()
+                    image = Image.open(BytesIO(img_response.content)).convert("RGB")
+                    if image.width < 500 or image.height < 300:
+                        continue
 
-            path = VIDEO_DIR / f"news_image_{index:02}.jpg"
-            image.save(path, "JPEG", quality=90)
-            author = html.unescape(meta.get("Artist", {}).get("value", "Author not listed"))
-            title = html.unescape(page.get("title", "Wikimedia Commons image"))
-            IMAGE_ATTRIBUTIONS.append(
-                f"{title} | {author} | {license_name} | {license_url}"
-            )
-            print("Licensed Wikimedia image selected:", title, license_name)
-            return path
+                    path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+                    image.save(path, "JPEG", quality=91)
+                    author = html.unescape(
+                        meta.get("Artist", {}).get("value", "Author not listed")
+                    )
+                    title = html.unescape(page.get("title", "Wikimedia Commons image"))
+                    license_url = meta.get("LicenseUrl", {}).get("value", "")
+                    IMAGE_ATTRIBUTIONS.append(
+                        f"{title} | {author} | {license_name} | {license_url}"
+                    )
+                    print("Wikimedia Commons image selected:", title, license_name)
+                    return path
+                except Exception as image_error:
+                    print("Commons candidate rejected:", str(image_error)[:160])
 
-    except Exception as error:
-        print("Commons image search failed:", str(error)[:250])
+        except Exception as error:
+            print("Commons search failed for query:", query, str(error)[:180])
 
     return None
+
+
+def create_story_illustration(headline, summary, index):
+    """
+    Zero-cost local fallback illustration. This is an original designed graphic,
+    not a documentary photograph or an AI-generated photo.
+    """
+    text = f"{headline} {summary}".lower()
+    img = Image.new("RGB", (1200, 800), (7, 19, 43))
+    draw = ImageDraw.Draw(img)
+
+    # Atmospheric background and layered horizon.
+    for y in range(800):
+        blend = y / 800
+        color = (
+            int(8 + 12 * blend),
+            int(23 + 17 * blend),
+            int(48 + 25 * blend)
+        )
+        draw.line((0, y, 1200, y), fill=color)
+
+    draw.ellipse((850, 55, 1110, 315), fill=(24, 75, 115))
+    draw.ellipse((900, 95, 1060, 255), fill=(35, 110, 150))
+    draw.rounded_rectangle((55, 55, 1145, 745), radius=34,
+                           outline=(50, 190, 230), width=5)
+
+    # Identify the broad subject and draw a clearly illustrative visual.
+    if any(k in text for k in ("storm", "hurricane", "weather", "snow", "winter", "el niño", "flood")):
+        label = "WEATHER & CLIMATE"
+        # clouds, rain and wind
+        for x, y, w in [(250, 290, 210), (520, 245, 250), (790, 315, 190)]:
+            draw.ellipse((x, y, x+w, y+115), fill=(135, 165, 190))
+            draw.ellipse((x+45, y-55, x+155, y+90), fill=(155, 185, 205))
+        for x in range(300, 900, 90):
+            draw.line((x, 440, x-45, 545), fill=(65, 190, 245), width=9)
+        draw.polygon([(0, 650), (280, 535), (520, 650), (790, 530),
+                      (1200, 660), (1200, 800), (0, 800)], fill=(20, 65, 90))
+    elif any(k in text for k in ("space", "spacex", "rocket", "nasa", "satellite", "starship")):
+        label = "SPACE & TECHNOLOGY"
+        draw.ellipse((760, 190, 920, 350), outline=(110, 210, 255), width=5)
+        draw.ellipse((800, 230, 880, 310), fill=(45, 120, 165))
+        draw.polygon([(535, 180), (635, 420), (600, 570), (565, 420)],
+                     fill=(220, 230, 240))
+        draw.polygon([(535, 180), (500, 430), (565, 420)], fill=(235, 75, 70))
+        draw.polygon([(565, 420), (600, 570), (635, 420)], fill=(255, 170, 45))
+        draw.ellipse((570, 350, 600, 410), fill=(60, 170, 235))
+        for x, y in [(220,180),(950,420),(300,500),(1030,170)]:
+            draw.ellipse((x,y,x+10,y+10), fill="white")
+    elif any(k in text for k in ("court", "judge", "lawsuit", "legal", "supreme", "trial", "congress", "senate", "election", "president", "trump", "politic")):
+        label = "POLITICS & PUBLIC AFFAIRS"
+        draw.rectangle((250, 360, 950, 625), fill=(25, 55, 85))
+        draw.polygon([(220, 360), (600, 205), (980, 360)], fill=(210, 220, 230))
+        for x in (330, 475, 620, 765):
+            draw.rectangle((x, 365, x+65, 625), fill=(185, 205, 220))
+        draw.rectangle((220, 625, 980, 665), fill=(220, 225, 230))
+        draw.rectangle((180, 665, 1020, 700), fill=(120, 155, 180))
+    elif any(k in text for k in ("crash", "collision", "flight", "airport", "airline", "ship", "train", "transport", "road")):
+        label = "TRANSPORT & INFRASTRUCTURE"
+        draw.rectangle((0, 575, 1200, 800), fill=(24, 42, 63))
+        draw.polygon([(250, 470), (850, 470), (1030, 590), (80, 590)], fill=(180, 195, 205))
+        draw.rectangle((500, 360, 720, 470), fill=(225, 235, 240))
+        draw.polygon([(500, 390), (360, 435), (500, 435)], fill=(90, 170, 210))
+        draw.polygon([(720, 390), (865, 435), (720, 435)], fill=(90, 170, 210))
+        draw.rectangle((590, 330, 630, 365), fill=(220, 225, 230))
+    elif any(k in text for k in ("fire", "explosion", "disaster", "emergency", "police", "shooting", "attack")):
+        label = "PUBLIC SAFETY"
+        draw.polygon([(0, 650), (180, 430), (330, 650), (520, 390),
+                      (740, 650), (930, 440), (1200, 670), (1200, 800), (0,800)],
+                     fill=(75, 55, 62))
+        for x, y in [(300, 460), (600, 500), (850, 455)]:
+            draw.polygon([(x, y), (x-65, y+140), (x, y+105), (x+60, y+155)],
+                         fill=(245, 115, 35))
+            draw.polygon([(x, y+35), (x-30, y+125), (x+5, y+105), (x+35, y+145)],
+                         fill=(255, 205, 65))
+    else:
+        label = "USA NEWS | EXPLAINER"
+        # Abstract newsroom / data visualization for other topics.
+        draw.rounded_rectangle((220, 300, 980, 630), radius=28, fill=(16, 48, 78),
+                               outline=(60, 155, 205), width=4)
+        draw.line((300, 550, 420, 465, 535, 500, 690, 370, 850, 420),
+                  fill=(65, 215, 240), width=12)
+        for x, y in [(300,550),(420,465),(535,500),(690,370),(850,420)]:
+            draw.ellipse((x-13,y-13,x+13,y+13), fill=(255,205,75))
+
+    draw.rounded_rectangle((85, 90, 620, 160), radius=16, fill=(185, 25, 43))
+    draw.text((115, 105), label, font=get_font(32, True), fill="white")
+    draw.text((90, 690), "EDITORIAL ILLUSTRATION • DIGITAL ORBIT",
+              font=get_font(24, True), fill=(185, 225, 240))
+
+    path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+    img.save(path, "JPEG", quality=90)
+    print("Created zero-cost topic illustration (not a real photo):", label)
+    return path
 
 
 def get_news_image(headline, summary, index):
-    # Openverse first: free, openly licensed images with commercial-use-compatible licenses.
-    image_path = download_openverse_image(headline, index)
+    image_path = download_openverse_image(headline, summary, index)
     if image_path:
         return image_path
 
     print("No suitable Openverse image. Trying Wikimedia Commons.")
-    image_path = download_commons_image(headline, index)
+    image_path = download_commons_image(headline, summary, index)
     if image_path:
         return image_path
 
-    print("No suitable free image found. Video will use the Digital Orbit branded news graphic.")
-    return None
+    print("No openly licensed real image found. Creating a topic-specific editorial illustration.")
+    return create_story_illustration(headline, summary, index)
+
 
 def save_image_attributions():
     if IMAGE_ATTRIBUTIONS:
