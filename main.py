@@ -15,6 +15,7 @@ import feedparser
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from google import genai
+from google.genai import types
 
 
 # =========================================================
@@ -109,7 +110,12 @@ def generate_script(keys, prompt):
         if key in EXHAUSTED_KEYS:
             continue
 
-        client = genai.Client(api_key=key)
+        # Hard network timeout: a stuck Gemini request must not consume
+        # the entire 60-minute GitHub Actions job.
+        client = genai.Client(
+            api_key=key,
+            http_options=types.HttpOptions(timeout=30000)
+        )
 
         for attempt in range(2):
 
@@ -155,11 +161,16 @@ def generate_script(keys, prompt):
 
                 if code in (500, 503):
 
-                    wait_time = 8 * (attempt + 1)
+                    # Short bounded backoff. Each HTTP request itself has
+                    # a 30-second timeout configured above.
+                    wait_time = 5 * (attempt + 1)
 
                     print(
                         "Temporary server error. Waiting:",
-                        wait_time
+                        wait_time,
+                        "seconds; retry",
+                        attempt + 1,
+                        "of 2."
                     )
 
                     time.sleep(wait_time)
