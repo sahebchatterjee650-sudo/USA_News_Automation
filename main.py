@@ -247,8 +247,70 @@ def clean_image_query(headline):
     return " ".join(words[:8]) or headline[:100]
 
 
+def download_openverse_image(headline, index):
+    """Find openly licensed images; use only CC0, public-domain, CC BY or CC BY-SA."""
+    query = clean_image_query(headline)
+    api = "https://api.openverse.org/v1/images/"
+    params = {
+        "q": query,
+        "license": "cc0,pdm,by,by-sa",
+        "page_size": 20,
+        "mature": "false",
+        "filter_dead": "true",
+    }
+
+    try:
+        response = requests.get(
+            api,
+            params=params,
+            headers={"User-Agent": "DigitalOrbitNewsBot/1.0 (news video project)"},
+            timeout=30
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+
+        for item in results:
+            license_code = (item.get("license") or "").lower()
+            if license_code not in {"cc0", "pdm", "by", "by-sa"}:
+                continue
+
+            image_url = item.get("url") or item.get("thumbnail")
+            if not image_url:
+                continue
+
+            image_response = requests.get(
+                image_url,
+                headers={"User-Agent": "DigitalOrbitNewsBot/1.0"},
+                timeout=35
+            )
+            image_response.raise_for_status()
+            image = Image.open(BytesIO(image_response.content)).convert("RGB")
+            if image.width < 500 or image.height < 300:
+                continue
+
+            path = VIDEO_DIR / f"news_image_{index:02}.jpg"
+            image.save(path, "JPEG", quality=90)
+
+            title = html.unescape(item.get("title") or "Untitled image")
+            creator = html.unescape(item.get("creator") or "Creator not listed")
+            license_url = item.get("license_url") or ""
+            landing = item.get("foreign_landing_url") or ""
+            attribution = (
+                f"{title} | {creator} | CC {license_code.upper()} "
+                f"{item.get('license_version') or ''} | {license_url} | {landing}"
+            )
+            IMAGE_ATTRIBUTIONS.append(attribution)
+            print("Openverse image selected:", title, "license:", license_code)
+            return path
+
+    except Exception as error:
+        print("Openverse image search failed:", str(error)[:300])
+
+    return None
+
+
 def download_commons_image(headline, index):
-    """Use only Commons images with reuse-friendly commercial licenses."""
+    """Fallback: use only reuse-friendly Wikimedia Commons images."""
     query = clean_image_query(headline)
     api = "https://commons.wikimedia.org/w/api.php"
     params = {
@@ -299,8 +361,9 @@ def download_commons_image(headline, index):
             image.save(path, "JPEG", quality=90)
             author = html.unescape(meta.get("Artist", {}).get("value", "Author not listed"))
             title = html.unescape(page.get("title", "Wikimedia Commons image"))
-            attribution = f"{title} | {author} | {license_name} | {license_url}"
-            IMAGE_ATTRIBUTIONS.append(attribution)
+            IMAGE_ATTRIBUTIONS.append(
+                f"{title} | {author} | {license_name} | {license_url}"
+            )
             print("Licensed Wikimedia image selected:", title, license_name)
             return path
 
@@ -310,55 +373,19 @@ def download_commons_image(headline, index):
     return None
 
 
-def generate_ai_image(headline, summary, index):
-    """Generate a story-specific image through Hugging Face Inference Providers."""
-    token = os.getenv("HF_TOKEN", "").strip()
-    if not token:
-        print("HF_TOKEN not configured; AI image fallback unavailable.")
-        return None
-
-    model = os.getenv("HF_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
-    prompt = (
-        "Create a realistic editorial illustration for a United States news video. "
-        "Visual topic: " + headline + ". Context: " + summary[:500] +
-        ". No text, no logos, no watermark, no fake newspaper headlines. "
-        "Use a documentary photojournalism look, accurate setting and relevant objects. "
-        "Do not invent a real person's likeness. Vertical 4:5 composition."
-    )
-
-    try:
-        # Use the current Hugging Face Inference Providers router.
-        # provider="auto" selects an available provider for this model.
-        client = InferenceClient(
-            provider="auto",
-            api_key=token,
-            timeout=180
-        )
-        image = client.text_to_image(
-            prompt=prompt,
-            model=model
-        )
-        path = VIDEO_DIR / f"news_image_{index:02}.jpg"
-        image.convert("RGB").save(path, "JPEG", quality=90)
-        (VIDEO_DIR / f"news_image_{index:02}_NOTICE.txt").write_text(
-            "AI-generated illustrative image. It is not a photograph of the actual event.",
-            encoding="utf-8"
-        )
-        print("AI-generated illustrative image created with Inference Providers:", model)
-        return path
-
-    except Exception as error:
-        print("Hugging Face Inference Providers image generation failed:", str(error)[:500])
-        return None
-
 def get_news_image(headline, summary, index):
+    # Openverse first: free, openly licensed images with commercial-use-compatible licenses.
+    image_path = download_openverse_image(headline, index)
+    if image_path:
+        return image_path
+
+    print("No suitable Openverse image. Trying Wikimedia Commons.")
     image_path = download_commons_image(headline, index)
     if image_path:
         return image_path
 
-    print("No suitable licensed Commons image. Trying AI generation.")
-    return generate_ai_image(headline, summary, index)
-
+    print("No suitable free image found. Video will use the Digital Orbit branded news graphic.")
+    return None
 
 def save_image_attributions():
     if IMAGE_ATTRIBUTIONS:
@@ -1086,8 +1113,7 @@ SOURCE:
             )
 
             if news_image is None:
-                print("Story skipped: no suitable image and AI fallback unavailable:", headline)
-                continue
+                print("No free editorial image found; using branded headline graphic for:", headline)
 
             success = make_video(
                 headline,
