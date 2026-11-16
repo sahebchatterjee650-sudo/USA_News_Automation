@@ -191,6 +191,52 @@ def generate_script(keys, prompt):
     return ""
 
 
+def make_rss_only_script(headline, summary):
+    """
+    No-cost emergency fallback when Gemini quota/service is unavailable.
+    Uses only the supplied RSS headline and summary; it does not add facts.
+    This is a templated narration, not an AI-generated or independently
+    verified news script.
+    """
+    clean = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", summary))).strip()
+    clean = clean.strip(" .")
+    if len(clean.split()) < 25:
+        print("RSS fallback skipped: summary is too short for a responsible narration.")
+        return ""
+
+    # Keep the source's wording and facts; trim at a sentence boundary.
+    sentences = re.split(r"(?<=[.!?])\s+", clean)
+    selected = []
+    count = 0
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        words = sentence.split()
+        if count + len(words) > 105:
+            break
+        selected.append(sentence)
+        count += len(words)
+        if count >= 45:
+            break
+
+    body = " ".join(selected).strip()
+    if len(body.split()) < 25:
+        body = " ".join(clean.split()[:85]).strip()
+
+    script = (
+        f"Here is the latest update. {headline.strip().rstrip('.')}."
+        f" {body} "
+        "This report is based on the information currently available in the source summary."
+    )
+    if len(script.split()) < 45:
+        print("RSS fallback skipped: not enough source detail.")
+        return ""
+
+    print("Using RSS-only narration fallback because Gemini was unavailable.")
+    return script
+
+
 # =========================================================
 # FONT MANAGEMENT
 # =========================================================
@@ -1252,13 +1298,20 @@ SOURCE:
             prompt
         )
 
+        used_rss_fallback = False
+        if not script:
+            script = make_rss_only_script(headline, summary)
+            used_rss_fallback = bool(script)
+
+        minimum_words = 45 if used_rss_fallback else 65
+
         if (
             not script
             or "SKIP_STORY" in script.upper()
-            or len(script.split()) < 65
+            or len(script.split()) < minimum_words
         ):
 
-            print("Story skipped:", headline)
+            print("Story skipped: insufficient safe script content:", headline)
 
             continue
 
