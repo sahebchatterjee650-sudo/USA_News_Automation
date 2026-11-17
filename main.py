@@ -1098,10 +1098,24 @@ def make_video(headline, script, index, news_image=None):
 
     ass = filter_path(ass_path)
 
+    # Subtle Ken Burns movement, broadcast-style color finishing,
+    # clean fade-in/out, and readable burned-in captions.
     video_filter = (
+        "zoompan="
+        "z='min(zoom+0.00035,1.035)':"
+        "x='iw/2-(iw/zoom/2)':"
+        "y='ih/2-(ih/zoom/2)':"
+        "d=1:s=1080x1920:fps=25,"
+        "eq=contrast=1.045:saturation=1.08:brightness=-0.008,"
+        "unsharp=5:5:0.35:3:3:0.15,"
+        "vignette=PI/5,"
         f"ass=filename='{ass}':"
-        "fontsdir='/usr/share/fonts/truetype/dejavu'"
+        "fontsdir='/usr/share/fonts/truetype/dejavu',"
+        "fade=t=in:st=0:d=0.35,"
+        f"fade=t=out:st={max(0, duration - 0.45):.3f}:d=0.45"
     )
+
+    audio_filter = "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11"
 
     try:
 
@@ -1113,13 +1127,14 @@ def make_video(headline, script, index, news_image=None):
             "-i", str(background_path),
             "-i", str(audio_path),
             "-vf", video_filter,
+            "-af", audio_filter,
             "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "stillimage",
+            "-preset", "medium",
+            "-crf", "21",
             "-pix_fmt", "yuv420p",
             "-r", "25",
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "160k",
             "-t", str(duration),
             "-shortest",
             "-movflags", "+faststart",
