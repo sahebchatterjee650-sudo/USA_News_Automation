@@ -504,6 +504,23 @@ def create_story_illustration(headline, summary, index):
         draw.ellipse((570, 350, 600, 410), fill=(60, 170, 235))
         for x, y in [(220,180),(950,420),(300,500),(1030,170)]:
             draw.ellipse((x,y,x+10,y+10), fill="white")
+    elif any(k in text for k in ("nvidia", "jensen huang", "semiconductor", "microchip", "chipmaker", "artificial intelligence", " ai ", "technology company", "tech company", "tech firm", "software company")):
+        label = "TECHNOLOGY & AI"
+        # Original chip-and-circuit illustration for technology stories.
+        draw.rounded_rectangle((260, 260, 940, 620), radius=42,
+                               fill=(15, 55, 92), outline=(60, 205, 245), width=8)
+        draw.rounded_rectangle((430, 340, 770, 540), radius=28,
+                               fill=(20, 95, 145), outline=(120, 225, 255), width=6)
+        draw.text((600, 440), "AI", font=get_font(110, True),
+                  fill=(225, 245, 255), anchor="mm")
+        for x in range(300, 901, 100):
+            draw.line((x, 210, x, 260), fill=(65, 210, 245), width=8)
+            draw.line((x, 620, x, 675), fill=(65, 210, 245), width=8)
+        for y in (330, 440, 550):
+            draw.line((205, y, 260, y), fill=(65, 210, 245), width=8)
+            draw.line((940, y, 995, y), fill=(65, 210, 245), width=8)
+        for x, y in ((345, 310), (850, 570), (345, 570), (850, 310)):
+            draw.ellipse((x-13, y-13, x+13, y+13), fill=(255, 205, 75))
     elif any(k in text for k in ("court", "judge", "lawsuit", "legal", "supreme", "trial", "congress", "senate", "election", "president", "trump", "politic")):
         label = "POLITICS & PUBLIC AFFAIRS"
         draw.rectangle((250, 360, 950, 625), fill=(25, 55, 85))
@@ -1102,7 +1119,7 @@ def make_video(headline, script, index, news_image=None):
     # clean fade-in/out, and readable burned-in captions.
     video_filter = (
         "zoompan="
-        "z='min(zoom+0.00035,1.035)':"
+        "z='1+0.12*on/963':"
         "x='iw/2-(iw/zoom/2)':"
         "y='ih/2-(ih/zoom/2)':"
         "d=1:s=1080x1920:fps=25,"
