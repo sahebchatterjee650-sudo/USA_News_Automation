@@ -11,7 +11,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 ET = ZoneInfo("America/New_York")
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 _service = None
 _first_publish_time = None
 
@@ -44,6 +47,47 @@ def get_youtube_service():
     _service = build("youtube", "v3", credentials=credentials, cache_discovery=False)
     return _service
 
+
+
+def normalize_title(value):
+    """Normalize titles so punctuation/case differences do not create duplicates."""
+    import re
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+
+def get_recent_video_titles(max_pages=10):
+    """Read recent channel uploads so a later scheduled run skips previously posted stories."""
+    youtube = get_youtube_service()
+    channel_response = youtube.channels().list(
+        part="contentDetails",
+        mine=True
+    ).execute()
+    items = channel_response.get("items", [])
+    if not items:
+        raise RuntimeError("Could not identify the authorized YouTube channel.")
+
+    uploads_playlist = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    titles = set()
+    page_token = None
+
+    for _ in range(max_pages):
+        response = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=uploads_playlist,
+            maxResults=50,
+            pageToken=page_token
+        ).execute()
+        for item in response.get("items", []):
+            title = item.get("snippet", {}).get("title", "")
+            normalized = normalize_title(title)
+            if normalized:
+                titles.add(normalized)
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+
+    print("Loaded recent YouTube titles for duplicate check:", len(titles))
+    return titles
 
 def first_future_publish_time():
     now = datetime.now(ET)
