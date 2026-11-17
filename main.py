@@ -978,10 +978,10 @@ def make_video(headline, script, index, news_image=None):
 
     duration = float(probe.stdout.strip())
 
-    if duration < 30 or duration > 60:
+    if duration < 20 or duration > 60:
 
         print(
-            "Video skipped: narration must be 30-60 seconds; actual duration:",
+            "Video skipped: narration must be at least 20 seconds and no more than 60 seconds; actual duration:",
             duration
         )
 
@@ -1232,7 +1232,7 @@ SOURCE:
             script = make_rss_only_script(headline, summary)
             used_rss_fallback = bool(script)
 
-        minimum_words = 95
+        minimum_words = 45 if used_rss_fallback else 65
 
         if (
             not script
