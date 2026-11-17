@@ -597,241 +597,122 @@ def save_image_attributions():
 
 def create_background(headline, index, news_image=None):
 
-    banner = load_local_image(BANNER_FILE)
-
-    if banner is not None:
-
-        background = ImageOps.fit(
-            banner,
-            (WIDTH, HEIGHT),
-            method=Image.Resampling.LANCZOS
-        )
-
-        background = background.filter(
-            ImageFilter.GaussianBlur(radius=5)
-        )
-
-        dark = Image.new(
-            "RGB",
-            (WIDTH, HEIGHT),
-            (2, 10, 28)
-        )
-
-        background = Image.blend(
-            background,
-            dark,
-            0.62
-        )
-
-        print("Digital Orbit banner loaded.")
-
-    else:
-
-        print("WARNING: Banner not found.")
-
-        background = Image.new(
-            "RGB",
-            (WIDTH, HEIGHT),
-            (4, 13, 32)
-        )
-
-    overlay = Image.new(
-        "RGBA",
-        (WIDTH, HEIGHT),
-        (0, 0, 0, 0)
-    )
-
-    od = ImageDraw.Draw(overlay)
-
-    # Header
-    od.rectangle(
-        (0, 0, WIDTH, 275),
-        fill=(2, 10, 28, 220)
-    )
-
-    # Subtitle panel
-    od.rounded_rectangle(
-        (38, 390, WIDTH - 38, 1500),
-        radius=38,
-        fill=(3, 16, 39, 225),
-        outline=(35, 150, 225, 255),
-        width=4
-    )
-
-    # Footer
-    od.rectangle(
-        (0, 1620, WIDTH, HEIGHT),
-        fill=(2, 8, 22, 225)
-    )
-
-    background = Image.alpha_composite(
-        background.convert("RGBA"),
-        overlay
-    ).convert("RGB")
-
+    # Broadcast-style vertical layout: masthead, headline, hero image,
+    # lower-third, caption-safe area and a separate ticker strip.
+    background = Image.new("RGB", (WIDTH, HEIGHT), (4, 13, 31))
     draw = ImageDraw.Draw(background)
 
-    # Logo
+    for y in range(HEIGHT):
+        blend = y / HEIGHT
+        color = (
+            int(4 + 5 * blend),
+            int(14 + 12 * blend),
+            int(34 + 24 * blend)
+        )
+        draw.line((0, y, WIDTH, y), fill=color)
+
+    # Subtle broadcast grid / light accents.
+    draw.rectangle((0, 0, WIDTH, 235), fill=(2, 9, 23))
+    draw.rectangle((0, 230, WIDTH, 238), fill=(25, 170, 225))
+
     logo = load_local_image(LOGO_FILE)
-
     if logo is not None:
-
-        logo.thumbnail(
-            (145, 145),
-            Image.Resampling.LANCZOS
-        )
-
-        background.paste(
-            logo,
-            (45, 45)
-        )
-
+        logo.thumbnail((142, 142), Image.Resampling.LANCZOS)
+        background.paste(logo, (42, 38))
         draw = ImageDraw.Draw(background)
+        title_x = 215
+    else:
+        title_x = 55
 
-    title_x = 220 if logo is not None else 55
+    draw.text((title_x, 48), "DIGITAL ORBIT",
+              font=get_font(58, True), fill=(250, 252, 255))
+    draw.text((title_x, 125), "USA NEWS  |  NEWS BRIEFING",
+              font=get_font(31, True), fill=(40, 210, 245))
 
-    draw.text(
-        (title_x, 55),
-        "DIGITAL ORBIT",
-        font=get_font(58, True),
-        fill="white"
-    )
+    draw.rounded_rectangle((790, 65, 1035, 130), radius=16,
+                           fill=(190, 24, 45))
+    draw.text((912, 97), "LIVE UPDATE", font=get_font(27, True),
+              fill="white", anchor="mm")
 
-    draw.text(
-        (title_x, 135),
-        "USA NEWS | NEWS BRIEFING",
-        font=get_font(32, True),
-        fill=(45, 210, 255)
-    )
+    # Headline panel.
+    draw.rounded_rectangle((38, 275, 1042, 565), radius=26,
+                           fill=(7, 25, 52), outline=(35, 165, 220), width=4)
+    draw.text((75, 305), "TOP STORY", font=get_font(28, True),
+              fill=(255, 198, 65))
 
-    draw.rounded_rectangle(
-        (65, 215, 420, 285),
-        radius=12,
-        fill=(195, 25, 45)
-    )
-
-    draw.text(
-        (88, 231),
-        "LATEST UPDATE",
-        font=get_font(31, True),
-        fill="white"
-    )
-
-    draw.text(
-        (WIDTH // 2, 470),
-        "NEWS HEADLINE",
-        font=get_font(38, True),
-        fill=(255, 205, 65),
-        anchor="mm"
-    )
-
-    # Headline wrapping
-    headline_font = get_font(39, True)
-
-    lines = []
-    current = ""
-
-    for word in headline.upper().split():
-
+    headline_font = get_font(43, True)
+    words = headline.upper().split()
+    lines, current = [], ""
+    for word in words:
         trial = (current + " " + word).strip()
-
-        box = draw.textbbox(
-            (0, 0),
-            trial,
-            font=headline_font
-        )
-
-        if box[2] <= WIDTH - 150:
-
+        if draw.textbbox((0, 0), trial, font=headline_font)[2] <= 900:
             current = trial
-
         else:
-
             if current:
                 lines.append(current)
-
             current = word
-
     if current:
         lines.append(current)
 
-    y = 535
+    # Fit long headlines safely into the panel.
+    if len(lines) > 4:
+        headline_font = get_font(36, True)
+        lines, current = [], ""
+        for word in words:
+            trial = (current + " " + word).strip()
+            if draw.textbbox((0, 0), trial, font=headline_font)[2] <= 920:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
 
-    for line in lines[:3]:
+    y = 355 if len(lines) <= 3 else 340
+    line_gap = 52 if len(lines) <= 3 else 46
+    for line in lines[:4]:
+        draw.text((540, y), line, font=headline_font,
+                  fill=(248, 250, 255), anchor="mt")
+        y += line_gap
 
-        draw.text(
-            (WIDTH // 2, y),
-            line,
-            font=headline_font,
-            fill="white",
-            anchor="mt"
-        )
-
-        y += 58
-
-    draw.line(
-        (110, 750, WIDTH - 110, 750),
-        fill=(45, 160, 220),
-        width=3
-    )
-
-    # Story-specific editorial image panel
+    # Main editorial image, using licensed image or clearly labeled illustration.
+    draw.rounded_rectangle((38, 600, 1042, 1285), radius=24,
+                           fill=(9, 27, 52), outline=(35, 185, 230), width=4)
     if news_image is not None and Path(news_image).exists():
         try:
             photo = Image.open(news_image).convert("RGB")
             photo = ImageOps.fit(
-                photo, (920, 600),
+                photo, (960, 635),
                 method=Image.Resampling.LANCZOS,
                 centering=(0.5, 0.45)
             )
-            background.paste(photo, (80, 820))
-            draw = ImageDraw.Draw(background)
-            draw.rounded_rectangle(
-                (80, 820, 1000, 1420),
-                radius=18, outline=(45, 210, 255), width=5
-            )
+            background.paste(photo, (60, 625))
         except Exception as error:
             print("Could not place news image:", str(error)[:200])
+            draw.text((540, 940), "NEWS VISUAL", font=get_font(48, True),
+                      fill=(210, 230, 245), anchor="mm")
+    else:
+        draw.text((540, 940), "NEWS VISUAL", font=get_font(48, True),
+                  fill=(210, 230, 245), anchor="mm")
 
-    draw.text(
-        (WIDTH // 2, 1445),
-        "LIVE NEWS CAPTIONS",
-        font=get_font(34, True),
-        fill=(45, 210, 255),
-        anchor="mm"
-    )
+    draw = ImageDraw.Draw(background)
+    draw.rounded_rectangle((60, 625, 1020, 1260), radius=18,
+                           outline=(55, 195, 235), width=4)
 
-    # Footer
-    draw.rectangle(
-        (0, 1660, WIDTH, 1760),
-        fill=(185, 25, 43)
-    )
-
-    draw.text(
-        (55, 1688),
-        "USA NEWS",
-        font=get_font(42, True),
-        fill="white"
-    )
-
-    draw.text(
-        (55, 1810),
-        "DIGITAL ORBIT",
-        font=get_font(34, True),
-        fill=(45, 210, 255)
-    )
-
-    draw.text(
-        (55, 1860),
-        "STAY INFORMED | NEWS BRIEFING",
-        font=get_font(24, True),
-        fill=(230, 238, 250)
-    )
+    # Strong broadcast lower-third. Captions occupy the clear space below it.
+    draw.rectangle((0, 1310, WIDTH, 1420), fill=(190, 22, 43))
+    draw.text((55, 1335), "BREAKING NEWS", font=get_font(43, True),
+              fill="white")
+    draw.text((55, 1450), "DIGITAL ORBIT  •  USA NEWS",
+              font=get_font(28, True), fill=(55, 210, 245))
+    draw.rounded_rectangle((38, 1495, 1042, 1660), radius=18,
+                           fill=(5, 18, 39), outline=(30, 125, 175), width=2)
+    draw.text((540, 1685), "STAY INFORMED  |  NEWS BRIEFING",
+              font=get_font(25, True), fill=(205, 225, 240), anchor="mm")
 
     output = VIDEO_DIR / f"background_{index:02}.png"
-
     background.save(output)
-
     return output
 
 
