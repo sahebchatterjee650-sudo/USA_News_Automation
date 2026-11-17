@@ -846,7 +846,7 @@ def create_ass(script, duration, path):
         )
 
         file.write(
-            "Style: News,DejaVu Sans,42,"
+            "Style: News,DejaVu Sans,40,"
             "&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
             "-1,0,0,0,100,100,0,0,1,3,1,5,80,80,0,1\n\n"
         )
@@ -978,10 +978,10 @@ def make_video(headline, script, index, news_image=None):
 
     duration = float(probe.stdout.strip())
 
-    if duration < 20 or duration > 65:
+    if duration < 30 or duration > 60:
 
         print(
-            "Video skipped: invalid duration:",
+            "Video skipped: narration must be 30-60 seconds; actual duration:",
             duration
         )
 
@@ -1014,6 +1014,22 @@ def make_video(headline, script, index, news_image=None):
     )
 
     audio_filter = "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11"
+
+    # Scrolling headline ticker is rendered by FFmpeg from a temporary text file.
+    ticker_path = VIDEO_DIR / f"ticker_{index:02}.txt"
+    ticker_path.write_text(
+        f"BREAKING NEWS  •  {headline.upper()}  •  FOLLOW DIGITAL ORBIT FOR UPDATES",
+        encoding="utf-8"
+    )
+    ticker_file = filter_path(ticker_path)
+    ticker_filter = (
+        f"drawtext=textfile='{ticker_file}':reload=0:"
+        "fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf':"
+        "fontsize=30:fontcolor=white:"
+        "box=1:boxcolor=0x07172D@1:boxborderw=18:"
+        "x='w-mod(t*170\\,w+tw)':y=1740"
+    )
+    video_filter += "," + ticker_filter
 
     try:
 
@@ -1184,7 +1200,7 @@ def main():
 Write an original 30-60 second English news script
 for a general United States audience.
 
-Target length: 90 to 120 words.
+Target length: 115 to 135 words, suitable for a 40-55 second Short.
 
 Use only the supplied headline and RSS summary.
 Do not invent facts, quotes, dates, statistics or sources.
@@ -1216,7 +1232,7 @@ SOURCE:
             script = make_rss_only_script(headline, summary)
             used_rss_fallback = bool(script)
 
-        minimum_words = 45 if used_rss_fallback else 65
+        minimum_words = 95
 
         if (
             not script
