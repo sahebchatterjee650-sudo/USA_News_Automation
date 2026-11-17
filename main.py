@@ -1121,6 +1121,18 @@ def main():
 
     scripts = []
     seen = set()
+    seen_headlines = set()
+
+    # Compare against recent videos already on the YouTube channel, not only
+    # this workflow run, so the next scheduled batch cannot repost the same headline.
+    from youtube_upload import get_recent_video_titles, normalize_title
+    try:
+        published_titles = get_recent_video_titles()
+    except Exception as duplicate_check_error:
+        raise RuntimeError(
+            "Could not check recent YouTube uploads. Re-authorize the app with "
+            "youtube.readonly and youtube.upload scopes before running automation."
+        ) from duplicate_check_error
 
     video_count = 0
     attempted = 0
@@ -1177,15 +1189,24 @@ def main():
             )
         ).strip()
 
+        normalized_headline = normalize_title(headline)
+
         if (
             not headline
             or not link
             or link in seen
+            or not normalized_headline
+            or normalized_headline in seen_headlines
         ):
             continue
 
         seen.add(link)
+        seen_headlines.add(normalized_headline)
         attempted += 1
+
+        if normalized_headline in published_titles:
+            print("DUPLICATE SKIPPED: already present on YouTube:", headline)
+            continue
 
         if len(summary) < 40:
 
