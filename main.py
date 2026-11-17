@@ -1119,7 +1119,7 @@ def make_video(headline, script, index, news_image=None):
     # clean fade-in/out, and readable burned-in captions.
     video_filter = (
         "zoompan="
-        "z='1+0.12*on/963':"
+        f"z='1+0.12*on/{max(1, int(duration * 25))}':"
         "x='iw/2-(iw/zoom/2)':"
         "y='ih/2-(ih/zoom/2)':"
         "d=1:s=1080x1920:fps=25,"
