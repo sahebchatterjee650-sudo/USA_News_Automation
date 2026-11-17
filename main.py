@@ -1288,7 +1288,11 @@ SOURCE:
                         headline,
                         str(upload_error)[:700]
                     )
-                    raise
+                    # Do not silently continue after a failed upload.
+                    # Stop the workflow so the failure is visible in Actions.
+                    raise SystemExit(
+                        "YouTube upload failed; stopping this batch."
+                    ) from upload_error
 
                 video_count += 1
 
