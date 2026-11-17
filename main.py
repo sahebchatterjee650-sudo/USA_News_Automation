@@ -1271,6 +1271,25 @@ SOURCE:
 
             if success:
 
+                # Upload immediately after each MP4 is rendered.
+                # YouTube stores the video and publishes it at its scheduled time.
+                try:
+                    from youtube_upload import upload_video
+                    youtube_result = upload_video(
+                        video_path=VIDEO_DIR / f"news_{next_index:02}.mp4",
+                        headline=headline,
+                        source_url=link,
+                        index=video_count
+                    )
+                    print("YOUTUBE UPLOAD SUCCESS:", youtube_result)
+                except Exception as upload_error:
+                    print(
+                        "YOUTUBE UPLOAD FAILED:",
+                        headline,
+                        str(upload_error)[:700]
+                    )
+                    raise
+
                 video_count += 1
 
                 scripts.append(
