@@ -885,7 +885,7 @@ def create_ass(script, duration, path):
                 caption += r"\N" + second
 
             caption = (
-                r"{\an5\pos(540,1515)}"
+                r"{\an5\pos(540,1575)}"
                 + caption
             )
 
