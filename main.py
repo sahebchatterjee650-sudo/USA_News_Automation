@@ -14,8 +14,15 @@ import requests
 import feedparser
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
-from google import genai
-from google.genai import types
+
+# Gemini is optional. The RSS-only fallback keeps the pipeline running
+# when no API key is configured or Gemini is unavailable.
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
 
 
 # =========================================================
@@ -75,10 +82,8 @@ def get_api_keys():
         if value and value not in keys:
             keys.append(value)
 
-    if not keys:
-        raise RuntimeError("No Google API keys found.")
-
-    print("API keys loaded:", len(keys))
+    # No key is required: RSS-only narration is the no-Gemini fallback.
+    print("API keys loaded:", len(keys), "(Gemini optional)")
 
     return keys
 
@@ -110,6 +115,10 @@ def error_code(error):
 # =========================================================
 
 def generate_script(keys, prompt):
+
+    if not keys or genai is None or types is None:
+        print("Gemini disabled or unavailable; using RSS-only fallback.")
+        return ""
 
     for slot, key in enumerate(keys, 1):
 
@@ -1093,6 +1102,9 @@ def main():
     print("===================================")
 
     keys = get_api_keys()
+
+    if not keys:
+        print("No Gemini API key configured. RSS-only mode is active.")
 
     # Check FFmpeg tools
     for command in (
