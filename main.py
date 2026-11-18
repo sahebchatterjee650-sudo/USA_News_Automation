@@ -200,12 +200,36 @@ def generate_script(keys, prompt):
     return ""
 
 
+def fetch_source_article_text(url):
+    """Fetch readable publisher paragraphs; never invent or infer missing facts."""
+    if not url:
+        return ""
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; DigitalOrbitNewsBot/1.0)"},
+            timeout=12
+        )
+        response.raise_for_status()
+        page = response.text
+        page = re.sub(r"(?is)<(script|style|nav|footer|header|aside)\b[^>]*>.*?</\1>", " ", page)
+        paragraphs = re.findall(r"(?is)<p\b[^>]*>(.*?)</p>", page)
+        cleaned = []
+        for paragraph in paragraphs:
+            value = html.unescape(re.sub(r"<[^>]+>", " ", paragraph))
+            value = re.sub(r"\s+", " ", value).strip()
+            if len(value.split()) >= 8:
+                cleaned.append(value)
+        return " ".join(" ".join(cleaned).split()[:220])
+    except Exception as error:
+        print("Source article fetch unavailable:", str(error)[:180])
+        return ""
+
+
 def make_rss_only_script(headline, summary):
     """
-    No-cost emergency fallback when Gemini quota/service is unavailable.
-    Uses only the supplied RSS headline and summary; it does not add facts.
-    This is a templated narration, not an AI-generated or independently
-    verified news script.
+    No-cost fallback using only text supplied by RSS and the linked publisher.
+    This is templated narration, not AI-generated or independently verified.
     """
     clean = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", summary))).strip()
     clean = clean.strip(" .")
@@ -213,7 +237,6 @@ def make_rss_only_script(headline, summary):
         print("RSS fallback skipped: summary is too short for a responsible narration.")
         return ""
 
-    # Keep the source's wording and facts; trim at a sentence boundary.
     sentences = re.split(r"(?<=[.!?])\s+", clean)
     selected = []
     count = 0
@@ -221,30 +244,30 @@ def make_rss_only_script(headline, summary):
         sentence = sentence.strip()
         if not sentence:
             continue
-        words = sentence.split()
-        if count + len(words) > 105:
+        sentence_words = sentence.split()
+        if count + len(sentence_words) > 125:
             break
         selected.append(sentence)
-        count += len(words)
-        if count >= 45:
+        count += len(sentence_words)
+        if count >= 85:
             break
 
     body = " ".join(selected).strip()
-    if len(body.split()) < 25:
-        body = " ".join(clean.split()[:85]).strip()
+    if len(body.split()) < 70:
+        print("RSS fallback skipped: linked article did not provide enough usable detail.")
+        return ""
 
     script = (
         f"Here is the latest update. {headline.strip().rstrip('.')}."
         f" {body} "
-        "This report is based on the information currently available in the source summary."
+        "This report is based on information published by the source."
     )
-    if len(script.split()) < 45:
-        print("RSS fallback skipped: not enough source detail.")
+    if len(script.split()) < 75:
+        print("RSS fallback skipped: source text is too short for a 30-second report.")
         return ""
 
-    print("Using RSS-only narration fallback because Gemini was unavailable.")
+    print("Using source-backed RSS narration fallback because Gemini was unavailable.")
     return script
-
 
 # =========================================================
 # FONT MANAGEMENT
@@ -1201,6 +1224,11 @@ def main():
             )
         ).strip()
 
+        # RSS descriptions are often brief; use the linked publisher article text too.
+        article_text = fetch_source_article_text(link)
+        if article_text:
+            summary = (summary + " " + article_text).strip()
+
         normalized_headline = normalize_title(headline)
 
         if (
@@ -1265,7 +1293,7 @@ SOURCE:
             script = make_rss_only_script(headline, summary)
             used_rss_fallback = bool(script)
 
-        minimum_words = 45 if used_rss_fallback else 65
+        minimum_words = 75 if used_rss_fallback else 65
 
         if (
             not script
@@ -1361,7 +1389,7 @@ SOURCE:
 
         raise RuntimeError(
             "No videos were created. "
-            "Check Gemini model, API access, RSS and FFmpeg logs."
+            "Check source article access, narration length, RSS and FFmpeg logs."
         )
 
 
