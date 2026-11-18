@@ -168,7 +168,7 @@ jobs:
           ffmpeg -version
           ffprobe -version
 
-          python -c "import feedparser, edge_tts; from PIL import Image; from google import genai; print('All required packages are ready.')"
+          python -c "import feedparser, edge_tts; from PIL import Image; print('Core packages are ready; Gemini is optional.')"
 
       # =================================
       # GENERATE VIDEOS
@@ -187,6 +187,7 @@ jobs:
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
           VOICE_OFFSET: ${{ env.VOICE_OFFSET }}
+          MAX_STORIES: "2"
 
           PYTHONUNBUFFERED: "1"
 
