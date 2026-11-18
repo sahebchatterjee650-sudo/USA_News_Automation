@@ -732,10 +732,10 @@ def create_background(headline, index, news_image=None):
     draw.rounded_rectangle((60, 625, 1020, 1260), radius=18,
                            outline=(55, 195, 235), width=4)
 
-    # Strong broadcast lower-third. Captions occupy the clear space below it.
-    draw.rectangle((0, 1310, WIDTH, 1420), fill=(190, 22, 43))
-    draw.text((55, 1335), "BREAKING NEWS", font=get_font(43, True),
-              fill="white")
+    # Leave the lower-third clear; FFmpeg animates the red breaking-news
+    # banner and its title onto the screen during the first 0.6 seconds.
+    draw.rectangle((0, 1310, WIDTH, 1420), fill=(7, 19, 40))
+    draw.rectangle((0, 1420, WIDTH, 1427), fill=(25, 170, 225))
     draw.text((55, 1450), "DIGITAL ORBIT  •  USA NEWS",
               font=get_font(28, True), fill=(55, 210, 245))
     draw.rounded_rectangle((38, 1495, 1042, 1660), radius=18,
@@ -1044,6 +1044,21 @@ def make_video(headline, script, index, news_image=None):
         "fade=t=in:st=0:d=0.35,"
         f"fade=t=out:st={max(0, duration - 0.45):.3f}:d=0.45"
     )
+
+    # Broadcast motion package: animated lower-third slides in, headline
+    # label follows it, and a thin cyan accent sweeps across the top.
+    # All elements are generated locally by FFmpeg; no paid API or asset.
+    lower_third_filter = (
+        "drawbox=x='-w+min(t/0.55\\,1)*w':y=1310:w=1080:h=110:"
+        "color=0xBE162D@1:t=fill,"
+        "drawtext=text='BREAKING NEWS':"
+        "fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf':"
+        "fontsize=43:fontcolor=white:"
+        "x='-tw+min(t/0.55\\,1)*135':y=1340,"
+        "drawbox=x=0:y=230:w='min(t/0.8\\,1)*1080':h=7:"
+        "color=0x19AAE1@1:t=fill"
+    )
+    video_filter += "," + lower_third_filter
 
     audio_filter = "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11"
 
