@@ -1040,11 +1040,65 @@ def download_visual_for_segment(headline, segment, index, visual_no):
     return None
 
 
+
+def download_commons_visual_for_segment(headline, segment, index, visual_no):
+    """Search Wikimedia Commons for a real, openly licensed photograph for this scene."""
+    api = "https://commons.wikimedia.org/w/api.php"
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.3 (news video project)"}
+    query = clean_image_query(headline + " " + segment, "")
+    params = {
+        "action": "query", "format": "json", "generator": "search",
+        "gsrsearch": f"filetype:bitmap {query}", "gsrnamespace": 6,
+        "gsrlimit": 20, "prop": "imageinfo", "iiprop": "url|extmetadata",
+        "iiurlwidth": 1400
+    }
+    try:
+        response = requests.get(api, params=params, headers=headers, timeout=25)
+        response.raise_for_status()
+        pages = response.json().get("query", {}).get("pages", {})
+        for page in pages.values():
+            info = (page.get("imageinfo") or [{}])[0]
+            meta = info.get("extmetadata", {})
+            license_name = html.unescape(meta.get("LicenseShortName", {}).get("value", ""))
+            normalized = license_name.lower()
+            allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
+            blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
+            if not any(term in normalized for term in allowed) or any(term in normalized for term in blocked):
+                continue
+            image_url = info.get("thumburl") or info.get("url")
+            if not image_url:
+                continue
+            try:
+                img_response = requests.get(image_url, headers=headers, timeout=25)
+                img_response.raise_for_status()
+                image = Image.open(BytesIO(img_response.content)).convert("RGB")
+                if image.width < 600 or image.height < 350:
+                    continue
+                path = VIDEO_DIR / f"story_{index:02}_commons_{visual_no:02}.jpg"
+                image.save(path, "JPEG", quality=92)
+                title = html.unescape(page.get("title", "Wikimedia Commons image"))
+                author = html.unescape(meta.get("Artist", {}).get("value", "Author not listed"))
+                license_url = meta.get("LicenseUrl", {}).get("value", "")
+                landing = info.get("descriptionurl", "")
+                IMAGE_ATTRIBUTIONS.append(
+                    f"{title} | {author} | {license_name} | {license_url} | {landing}"
+                )
+                print("Real Wikimedia Commons scene photo selected:", visual_no, title)
+                return path
+            except Exception as image_error:
+                print("Commons scene candidate rejected:", str(image_error)[:140])
+    except Exception as error:
+        print("Wikimedia Commons scene search failed:", str(error)[:160])
+    return None
+
+
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
     visuals = []
     used_hashes = set()
     for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
         image_path = download_visual_for_segment(headline, segment, index, visual_no)
+        if image_path is None:
+            image_path = download_commons_visual_for_segment(headline, segment, index, visual_no)
         if image_path is None and fallback_image and Path(fallback_image).exists():
             image_path = Path(fallback_image)
         if image_path is None:
