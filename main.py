@@ -1273,17 +1273,25 @@ def main():
             continue
 
         prompt = f"""
-Write an original 30-60 second English news script
+Write an original, high-retention YouTube Shorts news script
 for a general United States audience.
 
-Target length: 115 to 135 words, suitable for a 40-55 second Short.
+Target length: 85 to 105 spoken words, usually about 30-45 seconds.
+The FIRST sentence must be a specific, compelling factual hook tied to this story.
+Do not begin with "Here is the latest update", "In today's news", or "You won't believe".
+Use this structure:
+1. First 1-2 seconds: the most important surprising or useful verified fact.
+2. Next: explain what happened in plain American English.
+3. Then: give the key context, number, consequence, or next step only if present in the source.
+4. End with one concise, natural line that gives viewers a reason to follow future verified updates; do not beg for likes.
 
-Use only the supplied headline and RSS summary.
-Do not invent facts, quotes, dates, statistics or sources.
+Use only the supplied headline and source text.
+Do not invent facts, quotes, dates, statistics, motives, or sources.
+Do not repeat the headline as the opening.
+Avoid filler, generic transitions, and sensational claims.
+Keep sentences short and easy to follow when heard once.
+Do not add a greeting or channel introduction.
 Do not claim independent verification.
-Use clear, natural American English.
-Make the opening engaging but factual.
-End with a short neutral closing sentence.
 
 If information is insufficient, reply exactly:
 SKIP_STORY
