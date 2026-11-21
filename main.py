@@ -257,9 +257,9 @@ def make_rss_only_script(headline, summary):
         print("RSS fallback skipped: linked article did not provide enough usable detail.")
         return ""
 
+    # Lead with the source's first concrete fact rather than a generic intro.
     script = (
-        f"Here is the latest update. {headline.strip().rstrip('.')}."
-        f" {body} "
+        f"{body} "
         "This report is based on information published by the source."
     )
     if len(script.split()) < 55:
