@@ -971,14 +971,34 @@ def filter_path(path):
 # =========================================================
 
 def split_script_for_visuals(script, max_segments=4):
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", script or "") if len(x.split()) >= 4]
-    if not sentences:
-        return [script or "USA news update"]
-    count = min(max_segments, len(sentences))
-    groups = [[] for _ in range(count)]
-    for i, sentence in enumerate(sentences):
-        groups[min(count - 1, i * count // len(sentences))].append(sentence)
-    return [" ".join(group) for group in groups if group]
+    """Split narration into multiple balanced visual beats, even if RSS fallback has few sentences."""
+    text = re.sub(r"\\s+", " ", script or "").strip()
+    if not text:
+        return ["USA news update"]
+
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", text) if x.strip()]
+    # Prefer sentence boundaries, but RSS fallback sometimes supplies one long sentence.
+    if len(sentences) >= 2:
+        count = min(max_segments, len(sentences))
+        groups = [[] for _ in range(count)]
+        for i, sentence in enumerate(sentences):
+            groups[min(count - 1, i * count // len(sentences))].append(sentence)
+        segments = [" ".join(group) for group in groups if group]
+    else:
+        words = text.split()
+        count = min(max_segments, max(1, (len(words) + 11) // 12))
+        chunk_size = max(1, (len(words) + count - 1) // count)
+        segments = [" ".join(words[i:i + chunk_size])
+                    for i in range(0, len(words), chunk_size)]
+
+    # For normal 15–60 second Shorts, aim for at least three scene beats.
+    words = text.split()
+    if len(segments) < 3 and len(words) >= 18:
+        count = min(max_segments, 3)
+        chunk_size = max(1, (len(words) + count - 1) // count)
+        segments = [" ".join(words[i:i + chunk_size])
+                    for i in range(0, len(words), chunk_size)]
+    return segments[:max_segments] or [text]
 
 
 def download_visual_for_segment(headline, segment, index, visual_no):
