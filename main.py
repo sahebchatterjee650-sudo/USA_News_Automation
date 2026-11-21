@@ -1061,7 +1061,7 @@ def create_story_slideshow(headline, index, visuals, duration):
         lines.extend([f"file '{safe}'", f"duration {per_slide:.3f}"])
     safe_last = slide_paths[-1].resolve().as_posix().replace("'", "'\\''")
     lines.append(f"file '{safe_last}'")
-    concat_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    concat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return concat_path
 
 
