@@ -971,7 +971,7 @@ def filter_path(path):
 # =========================================================
 
 def split_script_for_visuals(script, max_segments=4):
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", script or "") if len(x.split()) >= 4]
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", script or "") if len(x.split()) >= 4]
     if not sentences:
         return [script or "USA news update"]
     count = min(max_segments, len(sentences))
@@ -1054,7 +1054,7 @@ def create_story_slideshow(headline, index, visuals, duration):
         create_background(headline, index, image_path, output_path=slide_path)
         slide_paths.append(slide_path)
     concat_path = VIDEO_DIR / f"slideshow_{index:02}.txt"
-    per_slide = max(2.0, duration / max(1, len(slide_paths)))
+    per_slide = duration / max(1, len(slide_paths))
     lines = []
     for slide_path in slide_paths:
         safe = slide_path.resolve().as_posix().replace("'", "'\\''")
