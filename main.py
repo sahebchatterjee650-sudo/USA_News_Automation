@@ -627,7 +627,7 @@ def save_image_attributions():
 # DIGITAL ORBIT VIDEO BACKGROUND
 # =========================================================
 
-def create_background(headline, index, news_image=None):
+def create_background(headline, index, news_image=None, output_path=None):
 
     # Broadcast-style vertical layout: masthead, headline, hero image,
     # lower-third, caption-safe area and a separate ticker strip.
@@ -743,7 +743,7 @@ def create_background(headline, index, news_image=None):
     draw.text((540, 1685), "STAY INFORMED  |  NEWS BRIEFING",
               font=get_font(25, True), fill=(205, 225, 240), anchor="mm")
 
-    output = VIDEO_DIR / f"background_{index:02}.png"
+    output = Path(output_path) if output_path else VIDEO_DIR / f"background_{index:02}.png"
     background.save(output)
     return output
 
@@ -964,90 +964,145 @@ def filter_path(path):
     )
 
 
+
+# =========================================================
+# STORY VISUALS AND SHORTS COVER
+# =========================================================
+
+def split_script_for_visuals(script, max_segments=4):
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", script or "") if len(x.split()) >= 4]
+    if not sentences:
+        return [script or "USA news update"]
+    count = min(max_segments, len(sentences))
+    groups = [[] for _ in range(count)]
+    for i, sentence in enumerate(sentences):
+        groups[min(count - 1, i * count // len(sentences))].append(sentence)
+    return [" ".join(group) for group in groups if group]
+
+
+def download_visual_for_segment(headline, segment, index, visual_no):
+    query = clean_image_query(headline + " " + segment, "")
+    api = "https://api.openverse.org/v1/images/"
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.2 (news video project)"}
+    params = {"q": query, "license": "cc0,pdm,by,by-sa", "page_size": 20,
+              "mature": "false", "filter_dead": "true"}
+    try:
+        response = requests.get(api, params=params, headers=headers, timeout=20)
+        response.raise_for_status()
+        for item in response.json().get("results", []):
+            license_code = (item.get("license") or "").lower()
+            if license_code not in {"cc0", "pdm", "by", "by-sa"}:
+                continue
+            image_url = item.get("url") or item.get("thumbnail")
+            if not image_url:
+                continue
+            try:
+                image_response = requests.get(image_url, headers=headers, timeout=20)
+                image_response.raise_for_status()
+                image = Image.open(BytesIO(image_response.content)).convert("RGB")
+                if image.width < 500 or image.height < 300:
+                    continue
+                path = VIDEO_DIR / f"story_{index:02}_visual_{visual_no:02}.jpg"
+                image.save(path, "JPEG", quality=90)
+                title = html.unescape(item.get("title") or "Untitled image")
+                creator = html.unescape(item.get("creator") or "Creator not listed")
+                IMAGE_ATTRIBUTIONS.append(
+                    f"{title} | {creator} | CC {license_code.upper()} | "
+                    f"{item.get('license_url') or ''} | {item.get('foreign_landing_url') or ''}"
+                )
+                print("Licensed story visual selected:", visual_no, title)
+                return path
+            except Exception as image_error:
+                print("Visual candidate rejected:", str(image_error)[:140])
+    except Exception as error:
+        print("Story visual search unavailable:", str(error)[:160])
+    return None
+
+
+def get_story_visuals(headline, summary, script, index, fallback_image=None):
+    visuals = []
+    for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
+        image_path = download_visual_for_segment(headline, segment, index, visual_no)
+        if image_path is None and fallback_image and Path(fallback_image).exists():
+            image_path = Path(fallback_image)
+        if image_path is None:
+            image_path = create_story_illustration(
+                headline + " | " + segment[:100], summary, index * 10 + visual_no
+            )
+        visuals.append(image_path)
+    return visuals or [fallback_image or create_story_illustration(headline, summary, index)]
+
+
+def create_story_slideshow(headline, index, visuals, duration):
+    slide_paths = []
+    for visual_no, image_path in enumerate(visuals, 1):
+        slide_path = VIDEO_DIR / f"slide_{index:02}_{visual_no:02}.png"
+        create_background(headline, index, image_path, output_path=slide_path)
+        slide_paths.append(slide_path)
+    concat_path = VIDEO_DIR / f"slideshow_{index:02}.txt"
+    per_slide = max(2.0, duration / max(1, len(slide_paths)))
+    lines = []
+    for slide_path in slide_paths:
+        safe = slide_path.resolve().as_posix().replace("'", "'\\''")
+        lines.extend([f"file '{safe}'", f"duration {per_slide:.3f}"])
+    safe_last = slide_paths[-1].resolve().as_posix().replace("'", "'\\''")
+    lines.append(f"file '{safe_last}'")
+    concat_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    return concat_path
+
+
+def create_shorts_thumbnail(headline, index, hero_image):
+    cover_path = VIDEO_DIR / f"thumbnail_{index:02}.jpg"
+    cover_source = create_background(
+        headline, index, hero_image,
+        output_path=VIDEO_DIR / f"thumbnail_source_{index:02}.png"
+    )
+    Image.open(cover_source).convert("RGB").save(
+        cover_path, "JPEG", quality=94, optimize=True
+    )
+    print("SHORTS THUMBNAIL CREATED:", cover_path)
+    return cover_path
+
+
 # =========================================================
 # MAKE VIDEO
 # =========================================================
 
-def make_video(headline, script, index, news_image=None):
-
+def make_video(headline, script, index, news_image=None, summary=""):
     audio_path = VIDEO_DIR / f"voice_{index:02}.mp3"
-
     ass_path = VIDEO_DIR / f"captions_{index:02}.ass"
-
     video_path = VIDEO_DIR / f"news_{index:02}.mp4"
-
     voice = get_voice(index)
-
     print("Selected voice:", voice)
 
-    background_path = create_background(
-        headline,
-        index,
-        news_image
-    )
-
-    asyncio.run(
-        create_voice(
-            script,
-            audio_path,
-            voice
-        )
-    )
-
+    asyncio.run(create_voice(script, audio_path, voice))
     probe = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(audio_path)
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+        check=True, capture_output=True, text=True, timeout=30
     )
-
     duration = float(probe.stdout.strip())
-
     if duration < 15 or duration > 60:
-
-        print(
-            "Video skipped: narration must be at least 15 seconds and no more than 60 seconds; actual duration:",
-            duration
-        )
-
+        print("Video skipped: narration duration outside 15-60 seconds:", duration)
+        return False
+    if not create_ass(script, duration, ass_path):
         return False
 
-    if not create_ass(
-        script,
-        duration,
-        ass_path
-    ):
-        return False
+    visuals = get_story_visuals(headline, summary, script, index, news_image)
+    thumbnail_path = create_shorts_thumbnail(headline, index, visuals[0])
+    concat_path = create_story_slideshow(headline, index, visuals, duration)
+    print("Story slideshow slides:", len(visuals), "Thumbnail:", thumbnail_path)
 
     ass = filter_path(ass_path)
-
-    # Subtle Ken Burns movement, broadcast-style color finishing,
-    # clean fade-in/out, and readable burned-in captions.
     video_filter = (
-        "zoompan="
-        f"z='1+0.12*on/{max(1, int(duration * 25))}':"
-        "x='iw/2-(iw/zoom/2)':"
-        "y='ih/2-(ih/zoom/2)':"
-        "d=1:s=1080x1920:fps=25,"
+        "fps=25,scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,setsar=1,"
         "eq=contrast=1.045:saturation=1.08:brightness=-0.008,"
-        "unsharp=5:5:0.35:3:3:0.15,"
-        "vignette=PI/5,"
-        f"ass=filename='{ass}':"
-        "fontsdir='/usr/share/fonts/truetype/dejavu',"
+        "unsharp=5:5:0.35:3:3:0.15,vignette=PI/5,"
+        f"ass=filename='{ass}':fontsdir='/usr/share/fonts/truetype/dejavu',"
         "fade=t=in:st=0:d=0.35,"
         f"fade=t=out:st={max(0, duration - 0.45):.3f}:d=0.45"
     )
-
-    # Broadcast motion package: animated lower-third slides in, headline
-    # label follows it, and a thin cyan accent sweeps across the top.
-    # All elements are generated locally by FFmpeg; no paid API or asset.
     lower_third_filter = (
         "drawbox=x='-w+min(t/0.55\\,1)*w':y=1310:w=1080:h=110:"
         "color=0xBE162D@1:t=fill,"
@@ -1058,11 +1113,6 @@ def make_video(headline, script, index, news_image=None):
         "drawbox=x=0:y=230:w='min(t/0.8\\,1)*1080':h=7:"
         "color=0x19AAE1@1:t=fill"
     )
-    video_filter += "," + lower_third_filter
-
-    audio_filter = "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11"
-
-    # Scrolling headline ticker is rendered by FFmpeg from a temporary text file.
     ticker_path = VIDEO_DIR / f"ticker_{index:02}.txt"
     ticker_path.write_text(
         f"BREAKING NEWS  •  {headline.upper()}  •  FOLLOW DIGITAL ORBIT FOR UPDATES",
@@ -1072,56 +1122,30 @@ def make_video(headline, script, index, news_image=None):
     ticker_filter = (
         f"drawtext=textfile='{ticker_file}':reload=0:"
         "fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf':"
-        "fontsize=30:fontcolor=white:"
-        "box=1:boxcolor=0x07172D@1:boxborderw=18:"
-        "x='w-mod(t*170\\,w+tw)':y=1740"
+        "fontsize=30:fontcolor=white:box=1:boxcolor=0x07172D@1:"
+        "boxborderw=18:x='w-mod(t*170\\,w+tw)':y=1740"
     )
-    video_filter += "," + ticker_filter
+    video_filter += "," + lower_third_filter + "," + ticker_filter
+    audio_filter = "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11"
 
     try:
-
         run_command([
-            "ffmpeg",
-            "-y",
-            "-loop", "1",
-            "-framerate", "25",
-            "-i", str(background_path),
-            "-i", str(audio_path),
-            "-vf", video_filter,
-            "-af", audio_filter,
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "21",
-            "-pix_fmt", "yuv420p",
-            "-r", "25",
-            "-c:a", "aac",
-            "-b:a", "160k",
-            "-t", str(duration),
-            "-shortest",
-            "-movflags", "+faststart",
-            str(video_path)
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_path),
+            "-i", str(audio_path), "-vf", video_filter, "-af", audio_filter,
+            "-t", str(duration), "-c:v", "libx264", "-preset", "medium", "-crf", "21",
+            "-pix_fmt", "yuv420p", "-r", "25", "-c:a", "aac", "-b:a", "160k",
+            "-shortest", "-movflags", "+faststart", str(video_path)
         ])
-
     except subprocess.CalledProcessError as error:
-
-        print("FFmpeg video error:")
-
+        print("FFmpeg slideshow video error:")
         if error.stderr:
-            print(error.stderr[-3000:])
-
+            print(error.stderr[-4000:])
         raise
 
-    if (
-        not video_path.exists()
-        or video_path.stat().st_size < 100000
-    ):
-
-        raise RuntimeError(
-            "Video validation failed."
-        )
-
+    if not video_path.exists() or video_path.stat().st_size < 100000:
+        raise RuntimeError("Slideshow video validation failed.")
     print("VIDEO CREATED:", video_path)
-
+    print("THUMBNAIL FILE:", thumbnail_path)
     return True
 
 
@@ -1350,7 +1374,8 @@ SOURCE:
                 headline,
                 script,
                 next_index,
-                news_image
+                news_image,
+                summary
             )
 
             if success:
