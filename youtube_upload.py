@@ -114,15 +114,29 @@ def upload_video(video_path, headline, source_url="", index=0):
     publish_at = _first_publish_time + timedelta(minutes=15 * index)
 
     youtube = get_youtube_service()
-    title = (headline or "USA News Update").strip()
+    # Keep the publisher's factual headline recognizable; avoid misleading clickbait.
+    title = " ".join((headline or "USA News Update").split()).strip()
     if len(title) > 95:
-        title = title[:92].rsplit(" ", 1)[0] + "..."
+        title = title[:92].rsplit(" ", 1)[0].rstrip(" -:|") + "..."
+
+    import re
+    words = re.findall(r"[A-Za-z0-9]{3,}", title)
+    stop = {"the", "and", "for", "with", "from", "that", "this", "after", "over", "says", "what", "when", "how", "are", "was", "were", "has", "have"}
+    topic_tags = []
+    for word in words:
+        candidate = word.lower()
+        if candidate not in stop and candidate not in [x.lower() for x in topic_tags]:
+            topic_tags.append(candidate)
+        if len(topic_tags) >= 8:
+            break
+
     description = (
-        "Digital Orbit | USA News Briefing\n\n"
-        "A concise news update based on the linked source.\n"
-        + (f"Source: {source_url}\n\n" if source_url else "")
-        + "Subscribe for more news briefings.\n"
-        "#USANews #DigitalOrbit #NewsShorts"
+        f"{title}\\n\\n"
+        "A concise, source-based news briefing from Digital Orbit. "
+        "Watch for the key facts, context and what happens next.\\n\\n"
+        + (f"Original source: {source_url}\\n\\n" if source_url else "")
+        + "Subscribe to Digital Orbit for clear, concise US and world news updates.\\n"
+        "#Shorts #USNews #DigitalOrbit"
     )
 
     body = {
@@ -130,7 +144,7 @@ def upload_video(video_path, headline, source_url="", index=0):
             "title": title,
             "description": description[:4900],
             "categoryId": "25",
-            "tags": ["USA News", "Digital Orbit", "News Briefing", "News Shorts"]
+            "tags": list(dict.fromkeys(["Digital Orbit", "US News", "News Shorts", "News Briefing"] + topic_tags))[:15]
         },
         "status": {
             "privacyStatus": "private",
