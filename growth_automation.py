@@ -51,7 +51,7 @@ def write_report(filename, title, sections):
     body = [f"# {title}", "", f"Generated: {datetime.now(timezone.utc).isoformat()}", ""]
     for heading, content in sections:
         body += [f"## {heading}", "", content.strip() or "No data available.", ""]
-    (OUT / filename).write_text("\\n".join(body), encoding="utf-8")
+    (OUT / filename).write_text("\n".join(body), encoding="utf-8")
 
 def safe_topic(title, description=""):
     text = (title + " " + description).lower()
@@ -82,17 +82,17 @@ def engagement_research(youtube):
                 comment = ("Thanks for sharing this informative update. "
                            "Clear reporting helps viewers understand how this development may affect everyday life.")
                 rows.append(
-                    f"### {title}\\n"
-                    f"- Channel/search source: {channel_name}\\n"
-                    f"- Link: https://www.youtube.com/watch?v={vid}\\n"
-                    f"- বাংলা সংক্ষিপ্ত বিবরণ: {desc[:700] or 'ভিডিওর বিবরণ পাওয়া যায়নি; শিরোনামের ভিত্তিতে বিষয়টি চিহ্নিত করা হয়েছে।'}\\n"
-                    f"- Suggested English comment (draft only): {comment}\\n"
-                    f"- বাংলা অর্থ: এই তথ্যবহুল আপডেটটি শেয়ার করার জন্য ধন্যবাদ। পরিষ্কার প্রতিবেদন দর্শকদের বুঝতে সাহায্য করে যে এই ঘটনাটি দৈনন্দিন জীবনে কী প্রভাব ফেলতে পারে।\\n"
+                    f"### {title}\n"
+                    f"- Channel/search source: {channel_name}\n"
+                    f"- Link: https://www.youtube.com/watch?v={vid}\n"
+                    f"- বাংলা সংক্ষিপ্ত বিবরণ: {desc[:700] or 'ভিডিওর বিবরণ পাওয়া যায়নি; শিরোনামের ভিত্তিতে বিষয়টি চিহ্নিত করা হয়েছে।'}\n"
+                    f"- Suggested English comment (draft only): {comment}\n"
+                    f"- বাংলা অর্থ: এই তথ্যবহুল আপডেটটি শেয়ার করার জন্য ধন্যবাদ। পরিষ্কার প্রতিবেদন দর্শকদের বুঝতে সাহায্য করে যে এই ঘটনাটি দৈনন্দিন জীবনে কী প্রভাব ফেলতে পারে।\n"
                 )
         except Exception as exc:
-            rows.append(f"### {channel_name}\\nSearch unavailable: {str(exc)[:250]}\\n")
+            rows.append(f"### {channel_name}\nSearch unavailable: {str(exc)[:250]}\n")
     write_report("01_smart_engagement.md", "Smart Engagement Research", [
-        ("নিরাপদ ভিডিও ও Comment Draft", "\\n".join(rows) if rows else "নিরাপদ ফিল্টার পেরিয়ে কোনো ভিডিও পাওয়া যায়নি।"),
+        ("নিরাপদ ভিডিও ও Comment Draft", "\n".join(rows) if rows else "নিরাপদ ফিল্টার পেরিয়ে কোনো ভিডিও পাওয়া যায়নি।"),
         ("নোট", "এগুলি পর্যালোচনার জন্য Draft। কোনো Like বা Comment স্বয়ংক্রিয়ভাবে পোস্ট করা হয় না।")
     ])
 
@@ -132,36 +132,36 @@ def analytics_report(channel, videos):
         s = v.get("statistics", {})
         lines.append(f"- {v.get('snippet', {}).get('title','Untitled')} | Views: {s.get('viewCount','0')} | Likes: {s.get('likeCount','hidden')} | Comments: {s.get('commentCount','hidden')}")
     lines += ["", "Limitation: this first version uses YouTube Data API public/channel statistics. Audience retention, impressions, viewed-vs-swiped-away and viewer-online hours require YouTube Analytics API authorization (yt-analytics.readonly) and are not claimed here."]
-    write_report("02_youtube_analytics.md", "YouTube Analytics Report", [("Channel performance", "\\n".join(lines))])
+    write_report("02_youtube_analytics.md", "YouTube Analytics Report", [("Channel performance", "\n".join(lines))])
 
 def generate_viral_content(videos):
     sections = []
     for v in videos[:15]:
         title = v.get("snippet", {}).get("title", "USA News Update")
-        clean = re.sub(r"\\s+", " ", title).strip()
+        clean = re.sub(r"\s+", " ", title).strip()
         sections.append(
-            f"### Original: {clean}\\n"
-            f"- Hook 1: Here is what you need to know about {clean}.\\n"
-            f"- Hook 2: This latest update could matter to communities across the US.\\n"
-            f"- Hook 3: A quick breakdown of the facts behind this developing story.\\n"
-            f"- Title option 1: {clean} — What You Need to Know\\n"
-            f"- Title option 2: Latest US Update: {clean}\\n"
-            f"- Title option 3: The Key Facts About {clean}\\n"
-            f"- বাংলা নোট: শিরোনামের বিষয় অনুযায়ী তিনটি Hook ও তিনটি Title-এর খসড়া; প্রকাশের আগে তথ্য যাচাই করতে হবে।\\n"
+            f"### Original: {clean}\n"
+            f"- Hook 1: Here is what you need to know about {clean}.\n"
+            f"- Hook 2: This latest update could matter to communities across the US.\n"
+            f"- Hook 3: A quick breakdown of the facts behind this developing story.\n"
+            f"- Title option 1: {clean} — What You Need to Know\n"
+            f"- Title option 2: Latest US Update: {clean}\n"
+            f"- Title option 3: The Key Facts About {clean}\n"
+            f"- বাংলা নোট: শিরোনামের বিষয় অনুযায়ী তিনটি Hook ও তিনটি Title-এর খসড়া; প্রকাশের আগে তথ্য যাচাই করতে হবে।\n"
         )
     write_report("03_viral_hooks_titles.md", "Viral Hook & Title Generator", [
-        ("Drafts", "\\n".join(sections) or "No recent videos found.")
+        ("Drafts", "\n".join(sections) or "No recent videos found.")
     ])
 
 def community_drafts(videos):
     topics = [v.get("snippet", {}).get("title", "") for v in videos[:5]]
     body = []
     for title in topics:
-        body.append(f"### Topic: {title}\\nPoll question: Which part of this update would you like us to explain further?\\nOptions: Background | Local impact | What happens next | Key facts\\nবাংলা অর্থ: এই আপডেটের কোন দিকটি আমরা আরও ব্যাখ্যা করি?\\n")
+        body.append(f"### Topic: {title}\nPoll question: Which part of this update would you like us to explain further?\nOptions: Background | Local impact | What happens next | Key facts\nবাংলা অর্থ: এই আপডেটের কোন দিকটি আমরা আরও ব্যাখ্যা করি?\n")
     if not body:
         body = ["No recent video topics available for community drafts."]
     write_report("04_community_post_drafts.md", "Community Post Generator", [
-        ("English post and Bengali meaning", "\\n".join(body)),
+        ("English post and Bengali meaning", "\n".join(body)),
         ("নোট", "শুধু Draft তৈরি হয়। Community-তে স্বয়ংক্রিয়ভাবে প্রকাশ করা হয় না।")
     ])
 
@@ -188,7 +188,7 @@ def publishing_analyzer(videos):
     if not lines:
         lines = ["Not enough publication history to estimate a best time yet."]
     lines.append("This is a rough historical correlation, not proof that a time causes higher reach. YouTube Studio audience-online analytics can improve this after Analytics API authorization.")
-    write_report("05_publishing_time_analysis.md", "Best Publishing Time Analyzer", [("Historical upload performance by hour", "\\n".join(lines))])
+    write_report("05_publishing_time_analysis.md", "Best Publishing Time Analyzer", [("Historical upload performance by hour", "\n".join(lines))])
 
 def weekly_report(videos):
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
@@ -206,8 +206,8 @@ def weekly_report(videos):
     top = sorted(recent, key=lambda v: int(v.get("statistics", {}).get("viewCount", 0)), reverse=True)[:5]
     top_lines = [f"- {v.get('snippet',{}).get('title','Untitled')} — {v.get('statistics',{}).get('viewCount','0')} views" for v in top]
     write_report("06_weekly_growth_report.md", "Weekly Growth Report", [
-        ("Last 7 days", f"- Videos: {len(recent)}\\n- Current views on these videos: {views}\\n- Likes: {likes}\\n- Comments: {comments}"),
-        ("Top videos", "\\n".join(top_lines) or "No recent uploads in the last 7 days."),
+        ("Last 7 days", f"- Videos: {len(recent)}\n- Current views on these videos: {views}\n- Likes: {likes}\n- Comments: {comments}"),
+        ("Top videos", "\n".join(top_lines) or "No recent uploads in the last 7 days."),
         ("বাংলা পরামর্শ", "যে বিষয় ও ভিডিওতে দর্শক বেশি সাড়া দিয়েছে, পরের সপ্তাহে সেই ধরনের তথ্যভিত্তিক কনটেন্ট পরীক্ষা করুন।")
     ])
 
