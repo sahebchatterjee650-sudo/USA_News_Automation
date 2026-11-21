@@ -2,6 +2,7 @@
 import os
 import re
 import html
+import hashlib
 import time
 import asyncio
 import subprocess
@@ -1021,6 +1022,7 @@ def download_visual_for_segment(headline, segment, index, visual_no):
 
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
     visuals = []
+    used_hashes = set()
     for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
         image_path = download_visual_for_segment(headline, segment, index, visual_no)
         if image_path is None and fallback_image and Path(fallback_image).exists():
@@ -1029,6 +1031,18 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
             image_path = create_story_illustration(
                 headline + " | " + segment[:100], summary, index * 10 + visual_no
             )
+        try:
+            digest = hashlib.md5(Path(image_path).read_bytes()).hexdigest()
+        except Exception:
+            digest = str(image_path)
+        # Avoid showing the same photo repeatedly; use a clearly labelled
+        # editorial illustration as a distinct visual when search repeats an image.
+        if digest in used_hashes:
+            image_path = create_story_illustration(
+                headline + " | " + segment[:120], summary, index * 10 + visual_no + 100
+            )
+            digest = hashlib.md5(Path(image_path).read_bytes()).hexdigest()
+        used_hashes.add(digest)
         visuals.append(image_path)
     return visuals or [fallback_image or create_story_illustration(headline, summary, index)]
 
