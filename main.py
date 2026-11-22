@@ -3,6 +3,7 @@ import os
 import re
 import html
 import hashlib
+import difflib
 import json
 import textwrap
 import time
@@ -45,7 +46,7 @@ OUTPUT_FILE = Path("scripts.txt")
 BANNER_FILE = Path("digital_orbit_banner.png")
 LOGO_FILE = Path("digital_orbit_logo.png")
 
-MAX_STORIES = int(os.getenv("MAX_STORIES", "6"))
+MAX_STORIES = int(os.getenv("MAX_STORIES", "2"))
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "20"))
 
 WIDTH = 1080
@@ -256,16 +257,16 @@ def make_rss_only_script(headline, summary):
             break
 
     body = " ".join(selected).strip()
-    if len(body.split()) < 45:
+    body_words = body.split()
+    if len(body_words) > 78:
+        body = " ".join(body_words[:78])
+    if len(body.split()) < 48:
         print("RSS fallback skipped: linked article did not provide enough usable detail.")
         return ""
 
-    # Lead with the source's first concrete fact rather than a generic intro.
-    script = (
-        f"{body} "
-        "This report is based on information published by the source."
-    )
-    if len(script.split()) < 55:
+    # Keep the fallback concise; never pad it with invented narration.
+    script = body
+    if len(script.split()) < 48:
         print("RSS fallback skipped: source text is too short for a responsible short report.")
         return ""
 
@@ -1539,8 +1540,18 @@ def main():
         seen_headlines.add(normalized_headline)
         attempted += 1
 
-        if normalized_headline in published_titles:
-            print("DUPLICATE SKIPPED: already present on YouTube:", headline)
+        # Exact and near-duplicate detection against recent uploads.
+        near_match = None
+        candidate_tokens = set(normalized_headline.split())
+        for old_title in published_titles:
+            old_tokens = set(old_title.split())
+            overlap = len(candidate_tokens & old_tokens) / max(1, len(candidate_tokens | old_tokens))
+            similarity = difflib.SequenceMatcher(None, normalized_headline, old_title).ratio()
+            if normalized_headline == old_title or similarity >= 0.84 or overlap >= 0.78:
+                near_match = old_title
+                break
+        if near_match:
+            print("DUPLICATE / NEAR-DUPLICATE SKIPPED:", headline, "| matched:", near_match)
             continue
 
         if len(summary) < 40:
@@ -1556,7 +1567,7 @@ def main():
 Write an original, high-retention YouTube Shorts news script
 for a general United States audience.
 
-Target length: 75 to 95 spoken words, usually about 28-40 seconds.
+Target length: 60 to 75 spoken words, usually about 25-35 seconds.
 Write for a viewer deciding in the first second whether to keep watching.
 OPENING HOOK (first sentence, 0-2 seconds):
 - Lead with the most useful, surprising, or consequential VERIFIED fact.
@@ -1630,7 +1641,8 @@ SOURCE:
             )
 
             if news_image is None:
-                print("No free editorial image found; using branded headline graphic for:", headline)
+                print("STORY SKIPPED: no suitable real or photorealistic visual available:", headline)
+                continue
 
             success = make_video(
                 headline,
