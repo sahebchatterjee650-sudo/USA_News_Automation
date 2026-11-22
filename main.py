@@ -843,11 +843,13 @@ def create_story_illustration(headline, summary, index):
 
 
 def get_news_image(headline, summary, index):
-    # Prefer a photorealistic AI-generated contextual visual for the cover.
+    # Prefer a photorealistic AI-generated contextual visual when the optional
+    # free service is enabled and available.
     image_path = generate_free_ai_news_image(headline, summary, index, 0)
     if image_path:
         return image_path
 
+    # Prefer openly licensed real editorial images next.
     image_path = download_openverse_image(headline, summary, index)
     if image_path:
         return image_path
@@ -857,8 +859,14 @@ def get_news_image(headline, summary, index):
     if image_path:
         return image_path
 
-    print("No suitable real or photorealistic image provider available; skipping story.")
-    return None
+    # Final no-cost fallback: create an original topic illustration locally.
+    # It is explicitly labelled as an illustration, never passed off as a photo.
+    print("No licensed photo available; creating a clearly labelled local illustration.")
+    try:
+        return create_story_illustration(headline, summary, index)
+    except Exception as error:
+        print("Local illustration fallback failed:", str(error)[:240])
+        return None
 
 
 def save_image_attributions():
