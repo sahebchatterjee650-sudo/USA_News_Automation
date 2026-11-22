@@ -103,13 +103,13 @@ jobs:
 
           if [ "$BATCH" = "1" ]; then
             PUBLISH_TIME="09:00"
-            STORY_LIMIT=2
+            STORY_LIMIT=3
           elif [ "$BATCH" = "2" ]; then
             PUBLISH_TIME="13:00"
-            STORY_LIMIT=2
+            STORY_LIMIT=3
           else
             PUBLISH_TIME="17:00"
-            STORY_LIMIT=1
+            STORY_LIMIT=3
           fi
 
           echo "MAX_STORIES=$STORY_LIMIT" >> "$GITHUB_ENV"
