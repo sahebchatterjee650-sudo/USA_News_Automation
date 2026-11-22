@@ -1656,6 +1656,14 @@ def main():
 
             continue
 
+        # Preflight the required real/licensed cover photo BEFORE spending Gemini quota.
+        # Stories without a suitable photograph are skipped without an AI script call.
+        next_index = video_count + 1
+        news_image = get_news_image(headline, summary, next_index)
+        if news_image is None:
+            print("STORY SKIPPED BEFORE GEMINI: no suitable real or photorealistic visual available:", headline)
+            continue
+
         prompt = f"""
 Write an original, high-retention YouTube Shorts news script
 for a general United States audience.
@@ -1718,24 +1726,12 @@ SOURCE:
 
             continue
 
-        next_index = video_count + 1
-
         try:
 
             print(
                 "Creating video:",
                 next_index
             )
-
-            news_image = get_news_image(
-                headline,
-                summary,
-                next_index
-            )
-
-            if news_image is None:
-                print("STORY SKIPPED: no suitable real or photorealistic visual available:", headline)
-                continue
 
             success = make_video(
                 headline,
