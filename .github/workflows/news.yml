@@ -191,6 +191,9 @@ jobs:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GEMINI_FALLBACK_MODEL: gemini-3.6-flash
+          # Hugging Face ZeroGPU free quota is unreliable; enable only by setting
+          # the repository variable ENABLE_HF_IMAGE_GENERATION=true.
+          ENABLE_HF_IMAGE_GENERATION: ${{ vars.ENABLE_HF_IMAGE_GENERATION || 'false' }}
 
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
