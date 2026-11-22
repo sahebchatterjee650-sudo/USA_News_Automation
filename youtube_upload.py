@@ -132,11 +132,11 @@ def upload_video(video_path, headline, source_url="", index=0):
             break
 
     description = (
-        f"{title}\\n\\n"
+        f"{title}\n\n"
         "The key facts and latest known development in this story, in a short, source-based briefing. "
-        "What matters most to you about this update? Share your view below.\\n\\n"
-        + (f"Original reporting / source: {source_url}\\n\\n" if source_url else "")
-        + "Follow Digital Orbit for concise US news updates.\\n"
+        "What matters most to you about this update? Share your view below.\n\n"
+        + (f"Original reporting / source: {source_url}\n\n" if source_url else "")
+        + "Follow Digital Orbit for concise US news updates.\n"
         "#Shorts #USNews #News"
     )
 
