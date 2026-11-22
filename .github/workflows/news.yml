@@ -200,7 +200,7 @@ jobs:
       # The MP4 itself is uploaded to YouTube; only small cover/credit files are retained here.
       - name: Save Shorts thumbnails and image credits
         if: always() && env.RUN_BATCH == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: digital-orbit-shorts-thumbnails
           path: |
