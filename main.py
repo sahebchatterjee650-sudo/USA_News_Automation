@@ -493,63 +493,60 @@ def download_commons_image(headline, summary, index):
 
 def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     """
-    Best-effort free-limit photorealistic editorial visual.
-    First tries the legacy public Pollinations endpoint (no key); if an
-    optional POLLINATIONS_API_KEY is configured, also supports the current
-    authenticated endpoint. A generated scene is never represented as a
-    genuine documentary photograph.
+    Generate a photorealistic contextual scene through the public
+    mrfakename/Z-Image-Turbo Hugging Face ZeroGPU Space.
+    Free quota is limited and shared; HF_TOKEN can improve authenticated
+    access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
     scene = re.sub(r"\\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
-        "Create a highly photorealistic editorial news illustration for a "
-        "professional US television news explainer. Scene: " + scene[:700] + ". "
-        "Documentary photography aesthetic, natural realistic lighting, "
-        "authentic environment, believable details, cinematic but restrained, "
-        "vertical composition, subject clearly visible, no text, no captions, "
-        "no logos, no watermarks, no fake newspaper headlines. "
-        "Do not fabricate a specific real-world event or depict a real person's "
-        "likeness; use a neutral contextual scene or non-identifiable people."
+        "Photorealistic editorial news photography for a professional US news "
+        "briefing. Show this scene: " + scene[:650] + ". "
+        "Use the visual language of a real press photograph: natural lighting, "
+        "authentic locations, realistic people and objects, documentary camera, "
+        "credible proportions, subtle cinematic contrast, detailed textures. "
+        "Vertical 9:16 composition with the main subject centered and visible. "
+        "No words, letters, captions, logos, watermarks, graphic icons, vector art, "
+        "cartoon, illustration, diagram, or infographic. "
+        "For political or breaking-news stories, create a contextual editorial "
+        "scene and do not fabricate a specific event, quote, or identifiable "
+        "real person's likeness."
     )
-    headers = {"User-Agent": "DigitalOrbitNewsBot/2.0"}
-    key = os.getenv("POLLINATIONS_API_KEY", "").strip()
-    attempts = []
-    if key:
-        attempts.append((
-            "https://gen.pollinations.ai/image/" + quote(prompt, safe=""),
-            {"model": "flux", "width": 768, "height": 1365, "nologo": "true"},
-            {"Authorization": f"Bearer {key}"}
-        ))
-    # Legacy public endpoint is best-effort only; availability/rate limits can change.
-    attempts.append((
-        "https://image.pollinations.ai/prompt/" + quote(prompt, safe=""),
-        {"model": "flux", "width": 768, "height": 1365,
-         "nologo": "true", "safe": "true", "seed": str(20261122 + index * 17 + visual_no)},
-        {}
-    ))
-    for url, params, auth_headers in attempts:
-        try:
-            response = requests.get(
-                url, params=params, headers={**headers, **auth_headers},
-                timeout=(12, 100)
-            )
-            response.raise_for_status()
-            content_type = response.headers.get("Content-Type", "").lower()
-            if "image/" not in content_type or len(response.content) < 30000:
-                raise ValueError("AI image endpoint returned a non-image or tiny response")
-            image = Image.open(BytesIO(response.content)).convert("RGB")
-            if image.width < 512 or image.height < 768:
-                raise ValueError(f"AI image resolution too small: {image.size}")
-            path = VIDEO_DIR / f"ai_visual_{index:02}_{visual_no:02}.jpg"
-            image = ImageOps.fit(
-                image, (768, 1365), method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.45)
-            )
-            image.save(path, "JPEG", quality=91, optimize=True)
-            print("AI-GENERATED PHOTOREALISTIC VISUAL CREATED:", path)
-            return path
-        except Exception as error:
-            print("Free AI image generation unavailable:", str(error)[:220])
-    return None
+    try:
+        from gradio_client import Client
+        token = os.getenv("HF_TOKEN", "").strip() or None
+        client = Client("mrfakename/Z-Image-Turbo", hf_token=token, verbose=False)
+        result = client.predict(
+            prompt=prompt,
+            height=1344,
+            width=768,
+            num_inference_steps=9,
+            seed=20261122 + index * 31 + visual_no,
+            randomize_seed=False,
+            api_name="/generate_image",
+        )
+        generated = result[0] if isinstance(result, (tuple, list)) else result
+        if isinstance(generated, dict):
+            generated = generated.get("path") or generated.get("url")
+        if not generated:
+            raise ValueError("Hugging Face Space returned no image")
+        if isinstance(generated, Image.Image):
+            image = generated.convert("RGB")
+        else:
+            image = Image.open(generated).convert("RGB")
+        if image.width < 512 or image.height < 768:
+            raise ValueError(f"Generated image resolution too small: {image.size}")
+        path = VIDEO_DIR / f"ai_visual_{index:02}_{visual_no:02}.jpg"
+        image = ImageOps.fit(
+            image, (768, 1365), method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.45)
+        )
+        image.save(path, "JPEG", quality=91, optimize=True)
+        print("AI-GENERATED PHOTOREALISTIC VISUAL CREATED via Hugging Face ZeroGPU:", path)
+        return path
+    except Exception as error:
+        print("Hugging Face free AI image generation unavailable:", str(error)[:260])
+        return None
 
 
 def create_story_illustration(headline, summary, index):
