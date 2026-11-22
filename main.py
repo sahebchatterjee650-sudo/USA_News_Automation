@@ -1658,34 +1658,24 @@ def main():
             continue
 
         prompt = f"""
-Write an original, high-retention YouTube Shorts news script
-for a general United States audience.
+Write a high-retention YouTube Shorts news script for a general United States audience.
 
-Target length: 60 to 75 spoken words, usually about 25-35 seconds.
-Write for a viewer deciding in the first second whether to keep watching.
-OPENING HOOK (first sentence, 0-2 seconds):
-- Lead with the most useful, surprising, or consequential VERIFIED fact.
-- Make the stakes clear without exaggeration.
-- Never use a generic greeting, channel intro, or "You won't believe".
-RETENTION STRUCTURE:
-1. Hook: one short, concrete sentence.
-2. Context: what happened, who is affected, and where.
-3. Payoff: the key detail, number, change, or next step ONLY when present in the source.
-4. Viewer relevance: explain what this could mean for an ordinary US viewer only when the source supports it.
-5. Close: ask one specific, easy-to-answer question related to the story (not a generic "what do you think?").
-Use a natural spoken rhythm, short sentences, and plain American English.
-Remove repeated facts, filler, long background, and unnecessary transitions.
-Use a curiosity gap only if the script resolves it with a verified fact before the end.
-Do not add a fact solely to make the story more dramatic.
+LENGTH: 45-60 spoken words (roughly 18-25 seconds). Every sentence must earn its place.
+FIRST 1 SECOND — MOST IMPORTANT:
+- Start with a specific, verified fact or consequence that makes the viewer understand why this story matters.
+- Use 6-10 words for the opening line when possible.
+- Do NOT start with "Here's", "Breaking news", "Today", a greeting, the channel name, or a generic question.
+- Do NOT repeat the headline word-for-word.
+RETENTION:
+1. Hook immediately with the strongest verified detail.
+2. Explain what happened and who/where it affects.
+3. Deliver the most important supporting detail or next development.
+4. End with one natural, specific question that invites a real comment.
+Use plain, conversational American English and short sentences. Put the most important information first. Avoid slow introductions, repeated context, filler, jargon, and long lists.
+Do not force suspense. Do not add a viewer-impact claim unless the source supports it.
 
-Use only the supplied headline and source text.
-Do not invent facts, quotes, dates, statistics, motives, or sources.
-Do not repeat the headline as the opening.
-Avoid sensational claims, fear-bait, misleading questions, or unsupported predictions.
-Do not claim independent verification.
-
-If information is insufficient, reply exactly:
-SKIP_STORY
+FACT SAFETY:
+Use ONLY the supplied headline and source text. Do not invent facts, quotes, dates, numbers, motives, predictions, or sources. If information is insufficient, reply exactly SKIP_STORY. Never present an allegation as established fact.
 
 HEADLINE:
 {headline}
@@ -1707,7 +1697,7 @@ SOURCE:
             script = make_rss_only_script(headline, summary)
             used_rss_fallback = bool(script)
 
-        minimum_words = 35 if used_rss_fallback else 65
+        minimum_words = 35 if used_rss_fallback else 42
 
         if (
             not script
