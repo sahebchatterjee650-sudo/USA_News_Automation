@@ -491,6 +491,67 @@ def download_commons_image(headline, summary, index):
     return None
 
 
+def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
+    """
+    Best-effort free-limit photorealistic editorial visual.
+    First tries the legacy public Pollinations endpoint (no key); if an
+    optional POLLINATIONS_API_KEY is configured, also supports the current
+    authenticated endpoint. A generated scene is never represented as a
+    genuine documentary photograph.
+    """
+    scene = re.sub(r"\\s+", " ", f"{headline}. {scene_text}").strip()
+    prompt = (
+        "Create a highly photorealistic editorial news illustration for a "
+        "professional US television news explainer. Scene: " + scene[:700] + ". "
+        "Documentary photography aesthetic, natural realistic lighting, "
+        "authentic environment, believable details, cinematic but restrained, "
+        "vertical composition, subject clearly visible, no text, no captions, "
+        "no logos, no watermarks, no fake newspaper headlines. "
+        "Do not fabricate a specific real-world event or depict a real person's "
+        "likeness; use a neutral contextual scene or non-identifiable people."
+    )
+    headers = {"User-Agent": "DigitalOrbitNewsBot/2.0"}
+    key = os.getenv("POLLINATIONS_API_KEY", "").strip()
+    attempts = []
+    if key:
+        attempts.append((
+            "https://gen.pollinations.ai/image/" + quote(prompt, safe=""),
+            {"model": "flux", "width": 768, "height": 1365, "nologo": "true"},
+            {"Authorization": f"Bearer {key}"}
+        ))
+    # Legacy public endpoint is best-effort only; availability/rate limits can change.
+    attempts.append((
+        "https://image.pollinations.ai/prompt/" + quote(prompt, safe=""),
+        {"model": "flux", "width": 768, "height": 1365,
+         "nologo": "true", "safe": "true", "seed": str(20261122 + index * 17 + visual_no)},
+        {}
+    ))
+    for url, params, auth_headers in attempts:
+        try:
+            response = requests.get(
+                url, params=params, headers={**headers, **auth_headers},
+                timeout=(12, 100)
+            )
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "image/" not in content_type or len(response.content) < 30000:
+                raise ValueError("AI image endpoint returned a non-image or tiny response")
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+            if image.width < 512 or image.height < 768:
+                raise ValueError(f"AI image resolution too small: {image.size}")
+            path = VIDEO_DIR / f"ai_visual_{index:02}_{visual_no:02}.jpg"
+            image = ImageOps.fit(
+                image, (768, 1365), method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.45)
+            )
+            image.save(path, "JPEG", quality=91, optimize=True)
+            print("AI-GENERATED PHOTOREALISTIC VISUAL CREATED:", path)
+            return path
+        except Exception as error:
+            print("Free AI image generation unavailable:", str(error)[:220])
+    return None
+
+
 def create_story_illustration(headline, summary, index):
     """
     Zero-cost local fallback illustration. This is an original designed graphic,
@@ -602,6 +663,11 @@ def create_story_illustration(headline, summary, index):
 
 
 def get_news_image(headline, summary, index):
+    # Prefer a photorealistic AI-generated contextual visual for the cover.
+    image_path = generate_free_ai_news_image(headline, summary, index, 0)
+    if image_path:
+        return image_path
+
     image_path = download_openverse_image(headline, summary, index)
     if image_path:
         return image_path
@@ -611,7 +677,7 @@ def get_news_image(headline, summary, index):
     if image_path:
         return image_path
 
-    print("No openly licensed real image found. Creating a topic-specific editorial illustration.")
+    print("No image provider available. Using clearly labelled editorial illustration.")
     return create_story_illustration(headline, summary, index)
 
 
@@ -732,6 +798,10 @@ def create_background(headline, index, news_image=None, output_path=None):
     draw = ImageDraw.Draw(background)
     draw.rounded_rectangle((60, 625, 1020, 1260), radius=18,
                            outline=(55, 195, 235), width=4)
+    if news_image is not None and Path(news_image).name.startswith("ai_visual_"):
+        draw.rounded_rectangle((72, 1195, 360, 1242), radius=10, fill=(5, 18, 39))
+        draw.text((88, 1204), "AI-GENERATED VISUAL", font=get_font(18, True),
+                  fill=(230, 240, 250))
 
     # Leave the lower-third clear; FFmpeg animates the red breaking-news
     # banner and its title onto the screen during the first 0.6 seconds.
@@ -1096,7 +1166,10 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
     visuals = []
     used_hashes = set()
     for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
-        image_path = download_visual_for_segment(headline, segment, index, visual_no)
+        # Each narration beat gets its own generated scene; limit to one request per beat.
+        image_path = generate_free_ai_news_image(headline, segment, index, visual_no)
+        if image_path is None:
+            image_path = download_visual_for_segment(headline, segment, index, visual_no)
         if image_path is None:
             image_path = download_commons_visual_for_segment(headline, segment, index, visual_no)
         if image_path is None and fallback_image and Path(fallback_image).exists():
