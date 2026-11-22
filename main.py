@@ -406,6 +406,21 @@ def clean_image_query(headline, summary=""):
     return " ".join(result) or headline[:100]
 
 
+def request_image_search_with_backoff(url, params, headers, timeout=25):
+    """Retry temporary image-search gateway failures without bypassing provider limits."""
+    last_response = None
+    for attempt in range(3):
+        response = requests.get(url, params=params, headers=headers, timeout=timeout)
+        last_response = response
+        if response.status_code not in (502, 503, 504):
+            return response
+        if attempt < 2:
+            delay = 2 ** (attempt + 1)
+            print(f"Image provider temporary HTTP {response.status_code}; retrying in {delay}s.")
+            time.sleep(delay)
+    return last_response
+
+
 def image_search_queries(headline, summary):
     """Use several query variants so one poor headline search does not end the search."""
     primary = clean_image_query(headline, summary)
@@ -427,7 +442,7 @@ def download_openverse_image(headline, summary, index):
         print("Openverse skipped: rate limit already reached in this run.")
         return None
     api = "https://api.openverse.org/v1/images/"
-    headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.4 (https://github.com/sahebchatterjee650-sudo/USA_News_Automation)"}
 
     for query in image_search_queries(headline, summary):
         params = {
@@ -438,7 +453,7 @@ def download_openverse_image(headline, summary, index):
             "filter_dead": "true",
         }
         try:
-            response = requests.get(api, params=params, headers=headers, timeout=25)
+            response = request_image_search_with_backoff(api, params, headers, timeout=25)
             response.raise_for_status()
             results = response.json().get("results", [])
 
@@ -493,7 +508,7 @@ def download_commons_image(headline, summary, index):
         print("Wikimedia Commons skipped: rate limit already reached in this run.")
         return None
     api = "https://commons.wikimedia.org/w/api.php"
-    headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.4 (https://github.com/sahebchatterjee650-sudo/USA_News_Automation)"}
     allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
     blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
 
@@ -1243,11 +1258,11 @@ def download_visual_for_segment(headline, segment, index, visual_no):
         return None
     query = clean_image_query(headline + " " + segment, "")
     api = "https://api.openverse.org/v1/images/"
-    headers = {"User-Agent": "DigitalOrbitNewsBot/1.2 (news video project)"}
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.4 (https://github.com/sahebchatterjee650-sudo/USA_News_Automation)"}
     params = {"q": query, "license": "cc0,pdm,by,by-sa", "page_size": 20,
               "mature": "false", "filter_dead": "true"}
     try:
-        response = requests.get(api, params=params, headers=headers, timeout=20)
+        response = request_image_search_with_backoff(api, params, headers, timeout=20)
         response.raise_for_status()
         for item in response.json().get("results", []):
             license_code = (item.get("license") or "").lower()
@@ -1291,7 +1306,7 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
         print("Wikimedia Commons segment search skipped: this run has already hit its rate limit.")
         return None
     api = "https://commons.wikimedia.org/w/api.php"
-    headers = {"User-Agent": "DigitalOrbitNewsBot/1.3 (news video project)"}
+    headers = {"User-Agent": "DigitalOrbitNewsBot/1.4 (https://github.com/sahebchatterjee650-sudo/USA_News_Automation)"}
     query = clean_image_query(headline + " " + segment, "")
     params = {
         "action": "query", "format": "json", "generator": "search",
