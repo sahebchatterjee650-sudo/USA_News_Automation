@@ -103,12 +103,16 @@ jobs:
 
           if [ "$BATCH" = "1" ]; then
             PUBLISH_TIME="09:00"
+            STORY_LIMIT=2
           elif [ "$BATCH" = "2" ]; then
             PUBLISH_TIME="13:00"
+            STORY_LIMIT=2
           else
             PUBLISH_TIME="17:00"
+            STORY_LIMIT=1
           fi
 
+          echo "MAX_STORIES=$STORY_LIMIT" >> "$GITHUB_ENV"
           VOICE_OFFSET=$(( (BATCH - 1) * 3 ))
 
           echo "ET_PUBLISH_TIME=$PUBLISH_TIME" >> "$GITHUB_ENV"
@@ -190,8 +194,6 @@ jobs:
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
           VOICE_OFFSET: ${{ env.VOICE_OFFSET }}
-          MAX_STORIES: "3"
-
           PYTHONUNBUFFERED: "1"
 
         run: |
