@@ -150,18 +150,32 @@ def generate_script(keys, prompt):
 
             try:
 
-                response = client.models.generate_content(
-                    model=MODEL,
-                    contents=prompt
-                )
+                active_model = MODEL
+                try:
+                    response = client.models.generate_content(
+                        model=active_model,
+                        contents=prompt
+                    )
+                except Exception as primary_error:
+                    primary_code = error_code(primary_error)
+                    fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.6-flash")
+                    if primary_code in (408, 500, 503, 504) and fallback_model and fallback_model != active_model:
+                        print("Primary Gemini model unavailable; trying fallback model:", fallback_model)
+                        response = client.models.generate_content(
+                            model=fallback_model,
+                            contents=prompt
+                        )
+                        active_model = fallback_model
+                    else:
+                        raise
 
                 script = (response.text or "").strip()
 
                 if script:
 
                     print(
-                        "Script generated using API key:",
-                        slot
+                        "Script generated using model and API key:",
+                        active_model, slot
                     )
 
                     return script
