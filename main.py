@@ -1166,8 +1166,13 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
     visuals = []
     used_hashes = set()
     for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
-        # Each narration beat gets its own generated scene; limit to one request per beat.
-        image_path = generate_free_ai_news_image(headline, segment, index, visual_no)
+        # Reuse the cover as scene one to stay within free-tier request limits.
+        if (visual_no == 1 and fallback_image and
+                Path(fallback_image).exists() and
+                Path(fallback_image).name.startswith("ai_visual_")):
+            image_path = Path(fallback_image)
+        else:
+            image_path = generate_free_ai_news_image(headline, segment, index, visual_no)
         if image_path is None:
             image_path = download_visual_for_segment(headline, segment, index, visual_no)
         if image_path is None:
