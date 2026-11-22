@@ -515,7 +515,7 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     try:
         from gradio_client import Client
         token = os.getenv("HF_TOKEN", "").strip() or None
-        client = Client("mrfakename/Z-Image-Turbo", hf_token=token, verbose=False)
+        client = Client("mrfakename/Z-Image-Turbo", token=token, verbose=False)
         result = client.predict(
             prompt=prompt,
             height=1344,
