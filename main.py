@@ -577,7 +577,7 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
     global HF_AI_DISABLED
-    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
+    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "false").lower() not in ("1", "true", "yes"):
         return None
     scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
@@ -1244,6 +1244,10 @@ def split_script_for_visuals(script, max_segments=3):
 
 
 def download_visual_for_segment(headline, segment, index, visual_no):
+    global OPENVERSE_RATE_LIMITED
+    if OPENVERSE_RATE_LIMITED:
+        print("Openverse segment search skipped: this run has already hit its rate limit.")
+        return None
     query = clean_image_query(headline + " " + segment, "")
     api = "https://api.openverse.org/v1/images/"
     headers = {"User-Agent": "DigitalOrbitNewsBot/1.2 (news video project)"}
@@ -1278,13 +1282,21 @@ def download_visual_for_segment(headline, segment, index, visual_no):
             except Exception as image_error:
                 print("Visual candidate rejected:", str(image_error)[:140])
     except Exception as error:
-        print("Story visual search unavailable:", str(error)[:160])
+        message = str(error)
+        print("Story visual search unavailable:", message[:160])
+        if "429" in message or "too many requests" in message.lower():
+            OPENVERSE_RATE_LIMITED = True
+            print("Openverse rate limit reached; disabling all further Openverse searches for this run.")
     return None
 
 
 
 def download_commons_visual_for_segment(headline, segment, index, visual_no):
     """Search Wikimedia Commons for a real, openly licensed photograph for this scene."""
+    global COMMONS_RATE_LIMITED
+    if COMMONS_RATE_LIMITED:
+        print("Wikimedia Commons segment search skipped: this run has already hit its rate limit.")
+        return None
     api = "https://commons.wikimedia.org/w/api.php"
     headers = {"User-Agent": "DigitalOrbitNewsBot/1.3 (news video project)"}
     query = clean_image_query(headline + " " + segment, "")
@@ -1330,7 +1342,11 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
             except Exception as image_error:
                 print("Commons scene candidate rejected:", str(image_error)[:140])
     except Exception as error:
-        print("Wikimedia Commons scene search failed:", str(error)[:160])
+        message = str(error)
+        print("Wikimedia Commons scene search failed:", message[:160])
+        if "429" in message or "too many requests" in message.lower():
+            COMMONS_RATE_LIMITED = True
+            print("Wikimedia Commons rate limit reached; disabling further Commons searches for this run.")
     return None
 
 
