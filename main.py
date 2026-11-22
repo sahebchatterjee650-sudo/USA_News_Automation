@@ -33,7 +33,17 @@ except ImportError:
 # DIGITAL ORBIT - USA NEWS AUTOMATION
 # =========================================================
 
-RSS_URL = "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
+# Multiple established US news sources plus AP/Reuters discovery feeds.
+# Each feed is fetched independently so one provider outage cannot stop the batch.
+RSS_FEEDS = [
+    ("BBC US & Canada", "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"),
+    ("NPR", "https://feeds.npr.org/1001/rss.xml"),
+    ("ABC News", "https://abcnews.com/abcnews/topstories"),
+    ("CBS News", "https://www.cbsnews.com/latest/rss/main"),
+    ("NBC News", "https://feeds.nbcnews.com/nbcnews/public/news"),
+    ("AP via Google News", "https://news.google.com/rss/search?q=when:24h+site:apnews.com&hl=en-US&gl=US&ceid=US:en"),
+    ("Reuters via Google News", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&hl=en-US&gl=US&ceid=US:en"),
+]
 
 # Corrected Gemini model
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
@@ -202,6 +212,38 @@ def generate_script(keys, prompt):
     print("All available API keys failed.")
 
     return ""
+
+
+def fetch_multi_source_news():
+    """Collect recent candidate stories from several established US news feeds."""
+    entries = []
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; DigitalOrbitNewsBot/1.2)"}
+    for source_name, feed_url in RSS_FEEDS:
+        try:
+            response = requests.get(feed_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            parsed = feedparser.parse(response.content)
+            source_entries = parsed.entries or []
+            print("RSS source:", source_name, "| stories:", len(source_entries))
+            for item in source_entries:
+                item = dict(item)
+                item["_digital_orbit_source"] = source_name
+                entries.append(item)
+        except Exception as error:
+            print("RSS source unavailable:", source_name, str(error)[:180])
+
+    def published_key(item):
+        parsed_time = item.get("published_parsed") or item.get("updated_parsed")
+        if parsed_time:
+            try:
+                return time.mktime(parsed_time)
+            except Exception:
+                pass
+        return 0
+
+    entries.sort(key=published_key, reverse=True)
+    print("Total RSS candidates collected:", len(entries))
+    return entries
 
 
 def fetch_source_article_text(url):
@@ -1439,13 +1481,10 @@ def main():
                 command[0] + " is not installed."
             )
 
-    feed = feedparser.parse(RSS_URL)
+    feed_entries = fetch_multi_source_news()
 
-    if not feed.entries:
-
-        raise RuntimeError(
-            "No RSS news received."
-        )
+    if not feed_entries:
+        raise RuntimeError("No RSS news received from any configured source.")
 
     scripts = []
     created_stories = []
@@ -1484,7 +1523,7 @@ def main():
 
         print("Scripts saved.")
 
-    for entry in feed.entries:
+    for entry in feed_entries:
 
         if video_count >= MAX_STORIES:
             break
