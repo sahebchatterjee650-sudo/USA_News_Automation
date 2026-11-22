@@ -203,14 +203,14 @@ jobs:
         run: |
           python -u main.py
 
-      # Keep generated Shorts covers and image credits available for review.
-      # The MP4 itself is uploaded to YouTube; only small cover/credit files are retained here.
-      - name: Save Shorts thumbnails and image credits
+      # Retain generated MP4s plus covers, captions and image credits for review.
+      - name: Save generated Shorts and supporting assets
         if: always() && env.RUN_BATCH == 'true'
         uses: actions/upload-artifact@v6.0.0
         with:
           name: digital-orbit-content-pack
           path: |
+            output_videos/news_*.mp4
             output_videos/thumbnail_*.jpg
             output_videos/community_quiz_*.jpg
             output_videos/community_quiz_*.txt
