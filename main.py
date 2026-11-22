@@ -9,6 +9,7 @@ import textwrap
 import time
 import asyncio
 import subprocess
+import shutil
 from pathlib import Path
 from io import BytesIO
 from urllib.parse import quote
@@ -287,40 +288,21 @@ def fetch_source_article_text(url):
 
 
 def make_rss_only_script(headline, summary):
-    """
-    No-cost fallback using only RSS and linked publisher text.
-    This is source-based narration, not AI-generated or independently verified.
-    """
-    clean = re.sub(r"\\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", summary))).strip()
-    clean = clean.strip(" .")
-    if len(clean.split()) < 20:
-        print("RSS fallback skipped: source text is too short.")
+    """Build narration only from the publisher's headline and article text."""
+    clean = html.unescape(re.sub(r"<[^>]+>", " ", summary or ""))
+    clean = re.sub(r"\s+", " ", clean).strip(" .")
+    title = re.sub(r"\s+", " ", headline or "").strip(" .")
+    if not clean:
+        print("RSS narration skipped: publisher supplied no readable story text.")
         return ""
-
-    sentences = re.split(r"(?<=[.!?])\\s+", clean)
-    selected = []
-    count = 0
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        sentence_words = sentence.split()
-        if count + len(sentence_words) > 95:
-            break
-        selected.append(sentence)
-        count += len(sentence_words)
-        if count >= 65:
-            break
-
-    body = " ".join(selected).strip()
-    if len(body.split()) > 85:
-        body = " ".join(body.split()[:85])
-    if len(body.split()) < 35:
-        print("RSS fallback skipped: fewer than 35 usable source words.")
+    words = f"{title}. {clean}".split()
+    if len(words) < 35:
+        print("RSS narration skipped: source headline and article contain fewer than 35 words.")
         return ""
+    selected = words[:78]
+    print("Using deterministic source-only narration:", len(selected), "words.")
+    return " ".join(selected)
 
-    print("Using source-backed RSS narration fallback because Gemini was unavailable.")
-    return body
 
 # =========================================================
 # FONT MANAGEMENT
@@ -843,25 +825,7 @@ def create_story_illustration(headline, summary, index):
 
 
 def get_news_image(headline, summary, index):
-    # Prefer a photorealistic AI-generated contextual visual when the optional
-    # free service is enabled and available.
-    image_path = generate_free_ai_news_image(headline, summary, index, 0)
-    if image_path:
-        return image_path
-
-    # Prefer openly licensed real editorial images next.
-    image_path = download_openverse_image(headline, summary, index)
-    if image_path:
-        return image_path
-
-    print("No suitable Openverse image. Trying Wikimedia Commons.")
-    image_path = download_commons_image(headline, summary, index)
-    if image_path:
-        return image_path
-
-    # Final no-cost fallback: create an original topic illustration locally.
-    # It is explicitly labelled as an illustration, never passed off as a photo.
-    print("No licensed photo available; creating a clearly labelled local illustration.")
+    """Single zero-cost visual path: a clearly labelled local editorial illustration."""
     try:
         return create_story_illustration(headline, summary, index)
     except Exception as error:
@@ -1012,47 +976,41 @@ def create_background(headline, index, news_image=None, output_path=None):
 # =========================================================
 
 async def create_voice(script, path, voice):
-
-    # Edge TTS occasionally returns an empty response or a transient
-    # network error. Retry a few times before marking this story failed.
+    """Use Edge TTS first, then local eSpeak if the network TTS is unavailable."""
     last_error = None
-
-    for attempt in range(3):
-
+    for attempt in range(2):
         try:
             if path.exists():
                 path.unlink()
-
-            communicator = edge_tts.Communicate(
-                script,
-                voice,
-                rate="-12%"
-            )
-
-            await asyncio.wait_for(
-                communicator.save(str(path)),
-                timeout=150
-            )
-
+            communicator = edge_tts.Communicate(script, voice, rate="-12%")
+            await asyncio.wait_for(communicator.save(str(path)), timeout=120)
             if path.exists() and path.stat().st_size > 5000:
                 return
-
-            raise RuntimeError("Edge TTS returned no audio or an empty audio file.")
-
+            raise RuntimeError("Edge TTS returned an empty audio file.")
         except Exception as error:
             last_error = error
-            print(
-                f"Edge TTS attempt {attempt + 1}/3 failed:",
-                str(error)[:300]
-            )
-
+            print(f"Edge TTS attempt {attempt + 1}/2 failed:", str(error)[:240])
             if path.exists():
                 path.unlink()
-
-            if attempt < 2:
-                await asyncio.sleep(4 * (attempt + 1))
-
-    raise RuntimeError(f"Edge TTS failed after 3 attempts: {last_error}")
+            if attempt == 0:
+                await asyncio.sleep(2)
+    engine = shutil.which("espeak-ng") or shutil.which("espeak")
+    if engine:
+        wav_path = path.with_suffix(".wav")
+        try:
+            subprocess.run([engine, "-v", "en-us", "-s", "150", "-w", str(wav_path), script],
+                           check=True, capture_output=True, text=True, timeout=90)
+            subprocess.run(["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame",
+                            "-b:a", "128k", str(path)],
+                           check=True, capture_output=True, text=True, timeout=90)
+            if path.exists() and path.stat().st_size > 5000:
+                print("VOICE CREATED using local eSpeak fallback.")
+                return
+        except Exception as fallback_error:
+            print("Local eSpeak fallback failed:", str(fallback_error)[:300])
+        finally:
+            wav_path.unlink(missing_ok=True)
+    raise RuntimeError(f"All TTS methods failed. Edge TTS: {last_error}")
 
 
 def get_voice(index):
@@ -1367,35 +1325,16 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
 
 
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
-    """Use only generated or appropriately licensed photographs; never substitute fake infographic art."""
-    visuals = []
-    used_hashes = set()
-    for visual_no, segment in enumerate(split_script_for_visuals(script, 3), 1):
-        if (visual_no == 1 and fallback_image and
-                Path(fallback_image).exists() and
-                Path(fallback_image).name.startswith("ai_visual_")):
-            image_path = Path(fallback_image)
-        else:
-            image_path = generate_free_ai_news_image(headline, segment, index, visual_no)
-        if image_path is None:
-            image_path = download_visual_for_segment(headline, segment, index, visual_no)
-        if image_path is None:
-            image_path = download_commons_visual_for_segment(headline, segment, index, visual_no)
-        if image_path is None and fallback_image and Path(fallback_image).exists():
-            image_path = Path(fallback_image)
-        if image_path is None:
-            print("Visual beat skipped: no suitable photograph found:", visual_no)
-            continue
-        try:
-            digest = hashlib.md5(Path(image_path).read_bytes()).hexdigest()
-        except Exception:
-            digest = str(image_path)
-        if digest in used_hashes:
-            print("Repeated visual skipped:", image_path)
-            continue
-        used_hashes.add(digest)
-        visuals.append(image_path)
-    return visuals
+    """Use the locally generated editorial illustration; no external image APIs."""
+    if fallback_image and Path(fallback_image).exists():
+        print("Using local editorial illustration for this story.")
+        return [Path(fallback_image)]
+    try:
+        image_path = create_story_illustration(headline, summary, index)
+        return [Path(image_path)] if image_path and Path(image_path).exists() else []
+    except Exception as error:
+        print("Local illustration creation failed:", str(error)[:240])
+        return []
 
 
 def create_story_slideshow(headline, index, visuals, duration):
@@ -1680,47 +1619,10 @@ def main():
             print("STORY SKIPPED BEFORE GEMINI: no suitable real or photorealistic visual available:", headline)
             continue
 
-        prompt = f"""
-Write a high-retention YouTube Shorts news script for a general United States audience.
-
-LENGTH: 45-60 spoken words (roughly 18-25 seconds). Every sentence must earn its place.
-FIRST 1 SECOND — MOST IMPORTANT:
-- Start with a specific, verified fact or consequence that makes the viewer understand why this story matters.
-- Use 6-10 words for the opening line when possible.
-- Do NOT start with "Here's", "Breaking news", "Today", a greeting, the channel name, or a generic question.
-- Do NOT repeat the headline word-for-word.
-RETENTION:
-1. Hook immediately with the strongest verified detail.
-2. Explain what happened and who/where it affects.
-3. Deliver the most important supporting detail or next development.
-4. End with one natural, specific question that invites a real comment.
-Use plain, conversational American English and short sentences. Put the most important information first. Avoid slow introductions, repeated context, filler, jargon, and long lists.
-Do not force suspense. Do not add a viewer-impact claim unless the source supports it.
-
-FACT SAFETY:
-Use ONLY the supplied headline and source text. Do not invent facts, quotes, dates, numbers, motives, predictions, or sources. If information is insufficient, reply exactly SKIP_STORY. Never present an allegation as established fact.
-
-HEADLINE:
-{headline}
-
-RSS SUMMARY:
-{summary}
-
-SOURCE:
-{link}
-"""
-
-        script = generate_script(
-            keys,
-            prompt
-        )
-
-        used_rss_fallback = False
-        if not script:
-            script = make_rss_only_script(headline, summary)
-            used_rss_fallback = bool(script)
-
-        minimum_words = 35 if used_rss_fallback else 42
+        # Deterministic source-only narration; Gemini quota is not required.
+        script = make_rss_only_script(headline, summary)
+        used_rss_fallback = True
+        minimum_words = 35
 
         if (
             not script
@@ -1749,7 +1651,7 @@ SOURCE:
 
             if success:
 
-                create_community_quiz_assets(headline, script, link, next_index, keys)
+                # Optional community extras are excluded from the core video pipeline.
                 created_stories.append((headline, link))
 
                 # Upload immediately after each MP4 is rendered.
