@@ -585,7 +585,7 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
     global HF_AI_DISABLED
-    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "false").lower() not in ("1", "true", "yes"):
+    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
         return None
     scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
