@@ -1037,7 +1037,7 @@ def filter_path(path):
 # STORY VISUALS AND SHORTS COVER
 # =========================================================
 
-def split_script_for_visuals(script, max_segments=4):
+def split_script_for_visuals(script, max_segments=3):
     """Split narration into multiple balanced visual beats, even if RSS fallback has few sentences."""
     text = re.sub(r"\\s+", " ", script or "").strip()
     if not text:
@@ -1162,7 +1162,7 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
     visuals = []
     used_hashes = set()
-    for visual_no, segment in enumerate(split_script_for_visuals(script, 4), 1):
+    for visual_no, segment in enumerate(split_script_for_visuals(script, 3), 1):
         # Reuse the cover as scene one to stay within free-tier request limits.
         if (visual_no == 1 and fallback_image and
                 Path(fallback_image).exists() and
