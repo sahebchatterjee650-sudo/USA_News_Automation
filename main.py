@@ -1340,6 +1340,9 @@ def make_video(headline, script, index, news_image=None, summary=""):
         return False
 
     visuals = get_story_visuals(headline, summary, script, index, news_image)
+    if not visuals:
+        print("VIDEO SKIPPED: no acceptable visual scenes were available.")
+        return False
     thumbnail_path = create_shorts_thumbnail(headline, index, visuals[0])
     concat_path = create_story_slideshow(headline, index, visuals, duration)
     print("Story slideshow slides:", len(visuals), "Thumbnail:", thumbnail_path)
