@@ -998,7 +998,7 @@ async def create_voice(script, path, voice):
     if engine:
         wav_path = path.with_suffix(".wav")
         try:
-            subprocess.run([engine, "-v", "en-us", "-s", "150", "-w", str(wav_path), script],
+            subprocess.run([engine, "-v", "en-us", "-s", "125", "-w", str(wav_path), script],
                            check=True, capture_output=True, text=True, timeout=90)
             subprocess.run(["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame",
                             "-b:a", "128k", str(path)],
@@ -1386,8 +1386,8 @@ def make_video(headline, script, index, news_image=None, summary=""):
         check=True, capture_output=True, text=True, timeout=30
     )
     duration = float(probe.stdout.strip())
-    if duration < 15 or duration > 60:
-        print("Video skipped: narration duration outside 15-60 seconds:", duration)
+    if duration < 12 or duration > 60:
+        print("Video skipped: narration duration outside 12-60 seconds:", duration)
         return False
     if not create_ass(script, duration, ass_path):
         return False
