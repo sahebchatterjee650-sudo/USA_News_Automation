@@ -288,16 +288,16 @@ def fetch_source_article_text(url):
 
 def make_rss_only_script(headline, summary):
     """
-    No-cost fallback using only text supplied by RSS and the linked publisher.
-    This is templated narration, not AI-generated or independently verified.
+    No-cost fallback using only RSS and linked publisher text.
+    This is source-based narration, not AI-generated or independently verified.
     """
-    clean = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", summary))).strip()
+    clean = re.sub(r"\\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", summary))).strip()
     clean = clean.strip(" .")
-    if len(clean.split()) < 25:
-        print("RSS fallback skipped: summary is too short for a responsible narration.")
+    if len(clean.split()) < 20:
+        print("RSS fallback skipped: source text is too short.")
         return ""
 
-    sentences = re.split(r"(?<=[.!?])\s+", clean)
+    sentences = re.split(r"(?<=[.!?])\\s+", clean)
     selected = []
     count = 0
     for sentence in sentences:
@@ -305,29 +305,22 @@ def make_rss_only_script(headline, summary):
         if not sentence:
             continue
         sentence_words = sentence.split()
-        if count + len(sentence_words) > 125:
+        if count + len(sentence_words) > 95:
             break
         selected.append(sentence)
         count += len(sentence_words)
-        if count >= 85:
+        if count >= 65:
             break
 
     body = " ".join(selected).strip()
-    body_words = body.split()
-    if len(body_words) > 78:
-        body = " ".join(body_words[:78])
-    if len(body.split()) < 48:
-        print("RSS fallback skipped: linked article did not provide enough usable detail.")
-        return ""
-
-    # Keep the fallback concise; never pad it with invented narration.
-    script = body
-    if len(script.split()) < 48:
-        print("RSS fallback skipped: source text is too short for a responsible short report.")
+    if len(body.split()) > 85:
+        body = " ".join(body.split()[:85])
+    if len(body.split()) < 35:
+        print("RSS fallback skipped: fewer than 35 usable source words.")
         return ""
 
     print("Using source-backed RSS narration fallback because Gemini was unavailable.")
-    return script
+    return body
 
 # =========================================================
 # FONT MANAGEMENT
@@ -1714,7 +1707,7 @@ SOURCE:
             script = make_rss_only_script(headline, summary)
             used_rss_fallback = bool(script)
 
-        minimum_words = 55 if used_rss_fallback else 65
+        minimum_words = 35 if used_rss_fallback else 65
 
         if (
             not script
