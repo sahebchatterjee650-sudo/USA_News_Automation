@@ -579,7 +579,7 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     global HF_AI_DISABLED
     if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
         return None
-    scene = re.sub(r"\s+", " ", f"{headline}. {scene_text").strip()
+    scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
         "Photorealistic editorial news photography for a professional US news "
         "briefing. Show this scene: " + scene[:650] + ". "
