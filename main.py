@@ -3,6 +3,8 @@ import os
 import re
 import html
 import hashlib
+import json
+import textwrap
 import time
 import asyncio
 import subprocess
@@ -547,6 +549,94 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     except Exception as error:
         print("Hugging Face free AI image generation unavailable:", str(error)[:260])
         return None
+
+
+
+def create_community_quiz_assets(headline, script, source_url, index, keys):
+    """Create a source-grounded YouTube Community quiz image and ready-to-paste caption."""
+    prompt = f"""
+Create one concise multiple-choice quiz about the news item below.
+Use ONLY facts explicitly stated in the supplied script. If no safe factual question
+can be formed, return exactly SKIP_QUIZ.
+Return valid JSON only, with keys: question, options, correct, explanation.
+question: one short question; options: exactly three short strings;
+correct: exact option text from options; explanation: one sentence.
+Do not invent details, dates, statistics, or implications.
+
+HEADLINE: {headline}
+SCRIPT: {script}
+SOURCE: {source_url}
+"""
+    raw = generate_script(keys, prompt).strip()
+    try:
+        cleaned = re.sub(r"^\s*```(?:json)?|\```\s*$", "", raw, flags=re.I).strip()
+        data = json.loads(cleaned)
+        options = data.get("options", [])
+        question = str(data.get("question", "")).strip()
+        correct = str(data.get("correct", "")).strip()
+        if (len(options) != 3 or not question or correct not in options
+                or any(not isinstance(x, str) or not x.strip() for x in options)):
+            raise ValueError("Quiz fields failed validation")
+    except Exception as error:
+        print("Community quiz skipped: no valid source-grounded quiz:", str(error)[:180])
+        return None
+
+    canvas = Image.new("RGB", (1080, 1350), (7, 19, 43))
+    draw = ImageDraw.Draw(canvas)
+    draw.rounded_rectangle((48, 48, 1032, 1302), radius=42, fill=(12, 34, 65),
+                           outline=(27, 170, 225), width=5)
+    draw.text((92, 105), "DIGITAL ORBIT  |  NEWS QUIZ", font=get_font(42, True),
+              fill=(40, 190, 245))
+    draw.text((92, 205), "CAN YOU GET IT RIGHT?", font=get_font(54, True), fill="white")
+    y = 355
+    for line in textwrap.wrap(question, width=28):
+        draw.text((92, y), line, font=get_font(46, True), fill="white")
+        y += 64
+    y += 45
+    for letter, option in zip(("A", "B", "C"), options):
+        draw.rounded_rectangle((92, y, 988, y + 145), radius=24,
+                               fill=(22, 54, 91), outline=(70, 112, 155), width=3)
+        draw.ellipse((116, y + 34, 194, y + 112), fill=(190, 22, 45))
+        draw.text((140, y + 47), letter, font=get_font(40, True), fill="white")
+        wrapped = textwrap.wrap(str(option), width=30)[:2]
+        oy = y + (35 if len(wrapped) == 1 else 20)
+        for line in wrapped:
+            draw.text((225, oy), line, font=get_font(34, True), fill="white")
+            oy += 43
+        y += 175
+    draw.text((92, 1120), "COMMENT A, B OR C BELOW", font=get_font(43, True),
+              fill=(255, 205, 70))
+    draw.text((92, 1190), "Answer reveal in a follow-up update", font=get_font(28),
+              fill=(210, 225, 240))
+    image_path = VIDEO_DIR / f"community_quiz_{index:02}.jpg"
+    canvas.save(image_path, "JPEG", quality=94, optimize=True)
+    caption = (
+        f"\nNEWS QUIZ: {question}\n"
+        + "\n".join(f"{letter}. {option}" for letter, option in zip(("A", "B", "C"), options))
+        + "\n\nComment A, B, or C. We’ll share the answer in a follow-up.\n"
+        + "#DigitalOrbit #USNews #NewsQuiz"
+    )
+    (VIDEO_DIR / f"community_quiz_{index:02}.txt").write_text(
+        caption + f"\n\nSOURCE: {source_url}\n\nINTERNAL ANSWER: {correct}\n{data.get('explanation','')}",
+        encoding="utf-8"
+    )
+    print("COMMUNITY QUIZ IMAGE CREATED:", image_path)
+    print("COMMUNITY QUIZ CAPTION CREATED:", VIDEO_DIR / f"community_quiz_{index:02}.txt")
+    return image_path
+
+
+def create_daily_top3_assets(stories):
+    """Create a source-linked daily Top 3 text brief from stories actually produced."""
+    if len(stories) < 3:
+        print("Daily Top 3 skipped: fewer than three eligible stories were produced.")
+        return
+    lines = ["DIGITAL ORBIT — DAILY TOP 3", ""]
+    for number, (headline, url) in enumerate(stories[:3], 1):
+        lines.extend([f"{number}. {headline}", f"Source: {url}", ""])
+    lines.append("Follow DigitalOrbit for concise, source-linked US news updates.")
+    path = VIDEO_DIR / "daily_top_3.txt"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print("DAILY TOP 3 BRIEF CREATED:", path)
 
 
 def create_story_illustration(headline, summary, index):
@@ -1357,6 +1447,7 @@ def main():
         )
 
     scripts = []
+    created_stories = []
     seen = set()
     seen_headlines = set()
 
@@ -1470,7 +1561,7 @@ Use this structure:
 1. First 1-2 seconds: the most important surprising or useful verified fact.
 2. Next: explain what happened in plain American English.
 3. Then: give the key context, number, consequence, or next step only if present in the source.
-4. End with one concise, natural line that gives viewers a reason to follow future verified updates; do not beg for likes.
+4. If the source supports it, explain what changed (before vs. after) and how it may affect an ordinary US viewer. Do not speculate.\n5. End with one concise, natural line inviting a specific viewer question or comment, without begging for likes.
 
 Use only the supplied headline and source text.
 Do not invent facts, quotes, dates, statistics, motives, or sources.
@@ -1543,6 +1634,9 @@ SOURCE:
 
             if success:
 
+                create_community_quiz_assets(headline, script, link, next_index, keys)
+                created_stories.append((headline, link))
+
                 # Upload immediately after each MP4 is rendered.
                 # YouTube stores the video and publishes it at its scheduled time.
                 try:
@@ -1586,6 +1680,7 @@ SOURCE:
             )
 
     save_scripts()
+    create_daily_top3_assets(created_stories)
     save_image_attributions()
 
     print("===================================")
