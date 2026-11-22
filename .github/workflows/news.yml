@@ -148,7 +148,7 @@ jobs:
         timeout-minutes: 10
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng
           ffmpeg -version
           ffprobe -version
 
@@ -184,20 +184,14 @@ jobs:
         if: env.RUN_BATCH == 'true'
         timeout-minutes: 60
         env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
-          GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
-          GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
+          # Core video generation is source-only and does not require Gemini/HF API keys.
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          GEMINI_FALLBACK_MODEL: gemini-3.6-flash
-          # Hugging Face ZeroGPU free quota is unreliable; enable only by setting
-          # the repository variable ENABLE_HF_IMAGE_GENERATION=true.
-          ENABLE_HF_IMAGE_GENERATION: ${{ vars.ENABLE_HF_IMAGE_GENERATION || 'false' }}
 
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
           VOICE_OFFSET: ${{ env.VOICE_OFFSET }}
+          MAX_STORIES: ${{ env.MAX_STORIES }}
+          MAX_ATTEMPTS: "30"
           PYTHONUNBUFFERED: "1"
 
         run: |
