@@ -429,7 +429,7 @@ def download_openverse_image(headline, summary, index):
     api = "https://api.openverse.org/v1/images/"
     headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
 
-    for query in image_search_queries(headline, summary)[:1]:
+    for query in image_search_queries(headline, summary):
         params = {
             "q": query,
             "license": "cc0,pdm,by,by-sa",
@@ -497,7 +497,7 @@ def download_commons_image(headline, summary, index):
     allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
     blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
 
-    for query in image_search_queries(headline, summary)[:1]:
+    for query in image_search_queries(headline, summary):
         params = {
             "action": "query",
             "format": "json",
