@@ -1556,21 +1556,27 @@ def main():
 Write an original, high-retention YouTube Shorts news script
 for a general United States audience.
 
-Target length: 85 to 105 spoken words, usually about 30-45 seconds.
-The FIRST sentence must be a specific, compelling factual hook tied to this story.
-Do not begin with "Here is the latest update", "In today's news", or "You won't believe".
-Use this structure:
-1. First 1-2 seconds: the most important surprising or useful verified fact.
-2. Next: explain what happened in plain American English.
-3. Then: give the key context, number, consequence, or next step only if present in the source.
-4. If the source supports it, explain what changed (before vs. after) and how it may affect an ordinary US viewer. Do not speculate.\n5. End with one concise, natural line inviting a specific viewer question or comment, without begging for likes.
+Target length: 75 to 95 spoken words, usually about 28-40 seconds.
+Write for a viewer deciding in the first second whether to keep watching.
+OPENING HOOK (first sentence, 0-2 seconds):
+- Lead with the most useful, surprising, or consequential VERIFIED fact.
+- Make the stakes clear without exaggeration.
+- Never use a generic greeting, channel intro, or "You won't believe".
+RETENTION STRUCTURE:
+1. Hook: one short, concrete sentence.
+2. Context: what happened, who is affected, and where.
+3. Payoff: the key detail, number, change, or next step ONLY when present in the source.
+4. Viewer relevance: explain what this could mean for an ordinary US viewer only when the source supports it.
+5. Close: ask one specific, easy-to-answer question related to the story (not a generic "what do you think?").
+Use a natural spoken rhythm, short sentences, and plain American English.
+Remove repeated facts, filler, long background, and unnecessary transitions.
+Use a curiosity gap only if the script resolves it with a verified fact before the end.
+Do not add a fact solely to make the story more dramatic.
 
 Use only the supplied headline and source text.
 Do not invent facts, quotes, dates, statistics, motives, or sources.
 Do not repeat the headline as the opening.
-Avoid filler, generic transitions, and sensational claims.
-Keep sentences short and easy to follow when heard once.
-Do not add a greeting or channel introduction.
+Avoid sensational claims, fear-bait, misleading questions, or unsupported predictions.
 Do not claim independent verification.
 
 If information is insufficient, reply exactly:
