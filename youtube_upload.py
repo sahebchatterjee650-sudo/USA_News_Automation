@@ -115,9 +115,10 @@ def upload_video(video_path, headline, source_url="", index=0):
 
     youtube = get_youtube_service()
     # Keep the publisher's factual headline recognizable; avoid misleading clickbait.
+    # Keep the core news entity/action visible on mobile; avoid misleading clickbait.
     title = " ".join((headline or "USA News Update").split()).strip()
-    if len(title) > 95:
-        title = title[:92].rsplit(" ", 1)[0].rstrip(" -:|") + "..."
+    if len(title) > 78:
+        title = title[:75].rsplit(" ", 1)[0].rstrip(" -:|,") + "..."
 
     import re
     words = re.findall(r"[A-Za-z0-9]{3,}", title)
@@ -131,12 +132,12 @@ def upload_video(video_path, headline, source_url="", index=0):
             break
 
     description = (
-        f"{title}\n\n"
-        "A concise, source-based news briefing from Digital Orbit. "
-        "Watch for the key facts, context and what happens next.\n\n"
-        + (f"Original source: {source_url}\n\n" if source_url else "")
-        + "Subscribe to Digital Orbit for clear, concise US and world news updates.\n"
-        "#Shorts #USNews #DigitalOrbit"
+        f"{title}\\n\\n"
+        "The key facts and latest known development in this story, in a short, source-based briefing. "
+        "What matters most to you about this update? Share your view below.\\n\\n"
+        + (f"Original reporting / source: {source_url}\\n\\n" if source_url else "")
+        + "Follow Digital Orbit for concise US news updates.\\n"
+        "#Shorts #USNews #News"
     )
 
     body = {
