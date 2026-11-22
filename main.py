@@ -498,7 +498,7 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     Free quota is limited and shared; HF_TOKEN can improve authenticated
     access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
-    scene = re.sub(r"\\s+", " ", f"{headline}. {scene_text}").strip()
+    scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
         "Photorealistic editorial news photography for a professional US news "
         "briefing. Show this scene: " + scene[:650] + ". "
@@ -1039,11 +1039,11 @@ def filter_path(path):
 
 def split_script_for_visuals(script, max_segments=3):
     """Split narration into multiple balanced visual beats, even if RSS fallback has few sentences."""
-    text = re.sub(r"\\s+", " ", script or "").strip()
+    text = re.sub(r"\s+", " ", script or "").strip()
     if not text:
         return ["USA news update"]
 
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", text) if x.strip()]
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]
     # Prefer sentence boundaries, but RSS fallback sometimes supplies one long sentence.
     if len(sentences) >= 2:
         count = min(max_segments, len(sentences))
