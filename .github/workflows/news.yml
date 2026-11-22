@@ -190,7 +190,7 @@ jobs:
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
           ET_PUBLISH_TIME: ${{ env.ET_PUBLISH_TIME }}
           VOICE_OFFSET: ${{ env.VOICE_OFFSET }}
-          MAX_STORIES: "2"
+          MAX_STORIES: "3"
 
           PYTHONUNBUFFERED: "1"
 
@@ -203,9 +203,13 @@ jobs:
         if: always() && env.RUN_BATCH == 'true'
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: digital-orbit-shorts-thumbnails
+          name: digital-orbit-content-pack
           path: |
             output_videos/thumbnail_*.jpg
+            output_videos/community_quiz_*.jpg
+            output_videos/community_quiz_*.txt
+            output_videos/daily_top_3.txt
             output_videos/image_attributions.txt
+            output_videos/scripts.txt
           if-no-files-found: ignore
           retention-days: 14
