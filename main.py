@@ -390,6 +390,9 @@ def load_local_image(path):
 # =========================================================
 
 IMAGE_ATTRIBUTIONS = []
+HF_AI_DISABLED = False
+OPENVERSE_RATE_LIMITED = False
+COMMONS_RATE_LIMITED = False
 
 def clean_image_query(headline, summary=""):
     """Build short, topical search terms from both the headline and RSS summary."""
@@ -426,14 +429,18 @@ def image_search_queries(headline, summary):
 
 def download_openverse_image(headline, summary, index):
     """Find openly licensed editorial images. Only permissive reuse licenses are accepted."""
+    global OPENVERSE_RATE_LIMITED
+    if OPENVERSE_RATE_LIMITED:
+        print("Openverse skipped: rate limit already reached in this run.")
+        return None
     api = "https://api.openverse.org/v1/images/"
     headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
 
-    for query in image_search_queries(headline, summary):
+    for query in image_search_queries(headline, summary)[:1]:
         params = {
             "q": query,
             "license": "cc0,pdm,by,by-sa",
-            "page_size": 30,
+            "page_size": 8,
             "mature": "false",
             "filter_dead": "true",
         }
@@ -477,26 +484,34 @@ def download_openverse_image(headline, summary, index):
                     print("Openverse candidate rejected:", str(image_error)[:160])
 
         except Exception as error:
-            print("Openverse search failed for query:", query, str(error)[:180])
+            message = str(error)
+            print("Openverse search failed for query:", query, message[:180])
+            if "429" in message or "too many requests" in message.lower():
+                OPENVERSE_RATE_LIMITED = True
+                print("Openverse rate limit reached; disabling further Openverse requests for this run.")
 
     return None
 
 
 def download_commons_image(headline, summary, index):
     """Fallback search on Wikimedia Commons; keep license and creator attribution."""
+    global COMMONS_RATE_LIMITED
+    if COMMONS_RATE_LIMITED:
+        print("Wikimedia Commons skipped: rate limit already reached in this run.")
+        return None
     api = "https://commons.wikimedia.org/w/api.php"
     headers = {"User-Agent": "DigitalOrbitNewsBot/1.1 (news video project)"}
     allowed = ("cc0", "public domain", "cc by", "cc-by", "cc by-sa", "cc-by-sa")
     blocked = ("noncommercial", "nc-", "nd-", "no derivatives")
 
-    for query in image_search_queries(headline, summary):
+    for query in image_search_queries(headline, summary)[:1]:
         params = {
             "action": "query",
             "format": "json",
             "generator": "search",
             "gsrsearch": f"filetype:bitmap {query}",
             "gsrnamespace": 6,
-            "gsrlimit": 15,
+            "gsrlimit": 8,
             "prop": "imageinfo",
             "iiprop": "url|extmetadata",
             "iiurlwidth": 1400,
@@ -545,7 +560,11 @@ def download_commons_image(headline, summary, index):
                     print("Commons candidate rejected:", str(image_error)[:160])
 
         except Exception as error:
-            print("Commons search failed for query:", query, str(error)[:180])
+            message = str(error)
+            print("Commons search failed for query:", query, message[:180])
+            if "429" in message or "too many requests" in message.lower():
+                COMMONS_RATE_LIMITED = True
+                print("Commons rate limit reached; disabling further Commons requests for this run.")
 
     return None
 
@@ -557,7 +576,10 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     Free quota is limited and shared; HF_TOKEN can improve authenticated
     access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
-    scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
+    global HF_AI_DISABLED
+    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
+        return None
+    scene = re.sub(r"\s+", " ", f"{headline}. {scene_text").strip()
     prompt = (
         "Photorealistic editorial news photography for a professional US news "
         "briefing. Show this scene: " + scene[:650] + ". "
@@ -606,7 +628,11 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
         print("AI-GENERATED PHOTOREALISTIC VISUAL CREATED via Hugging Face ZeroGPU:", path)
         return path
     except Exception as error:
-        print("Hugging Face free AI image generation unavailable:", str(error)[:260])
+        message = str(error)
+        print("Hugging Face free AI image generation unavailable:", message[:260])
+        if any(term in message.lower() for term in ("zerogpu", "quota", "exceeded", "rate limit", "too many requests")):
+            HF_AI_DISABLED = True
+            print("Hugging Face AI disabled for the rest of this workflow run to avoid repeated quota failures.")
         return None
 
 
