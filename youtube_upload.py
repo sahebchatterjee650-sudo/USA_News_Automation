@@ -131,21 +131,49 @@ def upload_video(video_path, headline, source_url="", index=0):
         if len(topic_tags) >= 8:
             break
 
+    # Add a small set of accurate topic phrases from the actual headline.
+    # Avoid generic keyword stuffing and never add unrelated trending terms.
+    topic_phrases = []
+    for width in (2, 3):
+        for start in range(max(0, len(words) - width + 1)):
+            phrase_words = words[start:start + width]
+            phrase = " ".join(phrase_words).strip()
+            if len(phrase) >= 7 and phrase.lower() not in stop:
+                topic_phrases.append(phrase)
+            if len(topic_phrases) >= 4:
+                break
+        if len(topic_phrases) >= 4:
+            break
+
+    topic_hashtags = []
+    for word in words:
+        candidate = re.sub(r"[^A-Za-z0-9]", "", word)
+        if len(candidate) >= 4 and candidate.lower() not in stop:
+            hashtag = "#" + candidate
+            if hashtag.lower() not in [x.lower() for x in topic_hashtags]:
+                topic_hashtags.append(hashtag)
+        if len(topic_hashtags) >= 2:
+            break
+
     description = (
         f"{title}\n\n"
-        "The key facts and latest known development in this story, in a short, source-based briefing. "
-        "What matters most to you about this update? Share your view below.\n\n"
+        "A concise, source-based news briefing: the key development, the facts reported so far, "
+        "and why it matters. Watch to the end, then share your view respectfully.\n\n"
         + (f"Original reporting / source: {source_url}\n\n" if source_url else "")
-        + "Follow Digital Orbit for concise US news updates.\n"
-        "#Shorts #USNews #News"
+        + "Follow Digital Orbit for clear, concise US and world news updates.\n"
+        + " ".join(["#Shorts", "#USNews"] + topic_hashtags)
     )
+
+    all_tags = ["Digital Orbit", "US News", "US current events", "News Shorts", "News Briefing"]
+    all_tags.extend(topic_phrases)
+    all_tags.extend(topic_tags)
 
     body = {
         "snippet": {
             "title": title,
             "description": description[:4900],
             "categoryId": "25",
-            "tags": list(dict.fromkeys(["Digital Orbit", "US News", "News Shorts", "News Briefing"] + topic_tags))[:15]
+            "tags": list(dict.fromkeys(all_tags))[:18]
         },
         "status": {
             "privacyStatus": "private",
