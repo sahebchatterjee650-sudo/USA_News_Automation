@@ -184,7 +184,11 @@ jobs:
         if: env.RUN_BATCH == 'true'
         timeout-minutes: 60
         env:
-          # Core video generation is source-only and does not require Gemini/HF API keys.
+          # Pass existing Gemini secrets only when configured; never print their values.
+          GOOGLE_API_KEY_1: ${{ secrets.GOOGLE_API_KEY_1 }}
+          GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
+          GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
 
           BATCH_NUMBER: ${{ env.BATCH_NUMBER }}
