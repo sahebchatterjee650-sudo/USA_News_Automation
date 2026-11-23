@@ -289,103 +289,102 @@ def fetch_source_article_text(url):
 
 def make_rss_only_script(headline, summary):
     """
-    Build a retention-focused Shorts narration using only publisher-supplied facts.
-    The opening line is selected from the source text, not invented by the model.
+    Create a concise retention-oriented narration from publisher text.
+    Accepts feed-style fragments, but never invents supporting facts.
     """
     raw = html.unescape(re.sub(r"<[^>]+>", " ", summary or ""))
     raw = re.sub(r"\s+", " ", raw).strip()
     title = re.sub(r"\s+", " ", html.unescape(headline or "")).strip(" .")
-
     if not raw:
         print("RSS narration skipped: publisher supplied no readable story text.")
         return ""
 
-    # Remove common feed boilerplate and repeated fragments before sentence scoring.
     boilerplate = (
         "read more", "click here", "subscribe to", "sign up for",
-        "listen to the podcast", "watch live", "get the latest"
+        "listen to the podcast", "watch live", "get the latest",
+        "download the app", "follow us on"
     )
-    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9“\"'])", raw)
-    clean_sentences = []
-    seen_sentences = set()
-    for sentence in sentences:
-        sentence = re.sub(r"\s+", " ", sentence).strip(" -•|")
-        normalized = re.sub(r"[^a-z0-9 ]", "", sentence.lower()).strip()
-        words = sentence.split()
-        # Publisher feeds often contain longer factual sentences.
-        if len(words) < 5 or len(words) > 65:
-            continue
-        if any(phrase in sentence.lower() for phrase in boilerplate):
-            continue
-        if normalized and normalized not in seen_sentences:
-            clean_sentences.append(sentence)
-            seen_sentences.add(normalized)
 
-    if not clean_sentences:
-        print("RSS narration skipped: no complete, usable source sentences.")
+    # Feeds often encode several sentences without punctuation; use both
+    # sentence boundaries and the RSS body itself as an intact source passage.
+    raw_parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9“\"'])", raw)
+    candidates = []
+    seen = set()
+    for part in raw_parts:
+        part = re.sub(r"\s+", " ", part).strip(" -•|")
+        if any(x in part.lower() for x in boilerplate):
+            continue
+        normalized = re.sub(r"[^a-z0-9 ]", "", part.lower()).strip()
+        count = len(part.split())
+        if normalized and 5 <= count <= 95 and normalized not in seen:
+            candidates.append(part)
+            seen.add(normalized)
+
+    # If the feed supplied one coherent unpunctuated paragraph, keep that
+    # passage as source material rather than losing it during sentence parsing.
+    if not candidates and len(raw.split()) >= 12:
+        candidates = [raw[:1800]]
+
+    if not candidates:
+        print("RSS narration skipped: no usable publisher text.")
         return ""
 
-    # Prefer concrete, informative sentences for the opening hook.
     action_terms = (
         "announced", "approved", "rejected", "won", "lost", "filed",
         "ruled", "voted", "launched", "reported", "confirmed", "said",
-        "will", "plans", "reached", "began", "ended", "ordered", "passed"
+        "plans", "reached", "began", "ended", "ordered", "passed",
+        "warned", "expects", "agreed", "will"
     )
-    def sentence_score(sentence):
-        words = sentence.split()
-        score = 0
-        if 9 <= len(words) <= 25:
-            score += 3
-        if re.search(r"\d", sentence):
-            score += 2
-        if any(term in sentence.lower() for term in action_terms):
-            score += 2
-        if re.search(r"\b[A-Z][a-z]{2,}\b", sentence):
-            score += 1
-        if len(words) > 35:
-            score -= 2
-        return score
 
-    ranked = sorted(
-        enumerate(clean_sentences),
-        key=lambda pair: (sentence_score(pair[1]), -pair[0]),
-        reverse=True
-    )
+    def score(text):
+        words = text.split()
+        low = text.lower()
+        points = 0
+        if 8 <= len(words) <= 28:
+            points += 3
+        if re.search(r"\d", text):
+            points += 2
+        if any(term in low for term in action_terms):
+            points += 2
+        if re.search(r"\b[A-Z][a-z]{2,}\b", text):
+            points += 1
+        if len(words) > 42:
+            points -= 1
+        return points
+
+    ranked = sorted(enumerate(candidates), key=lambda x: (score(x[1]), -x[0]), reverse=True)
     hook_index, hook = ranked[0]
-    # Keep the selected hook first; then restore source order for the supporting facts.
-    supporting = [
-        sentence for i, sentence in enumerate(clean_sentences)
-        if i != hook_index
-    ]
-    ordered = [hook] + supporting
 
-    selected = []
-    word_count = 0
-    for sentence in ordered:
-        count = len(sentence.split())
-        if word_count + count > 62 and word_count >= 35:
+    # Build approximately 35–55 spoken words from source passages.
+    chosen = [hook]
+    total_words = len(hook.split())
+    for idx, passage in enumerate(candidates):
+        if idx == hook_index:
             continue
-        selected.append(sentence)
-        word_count += count
-        if word_count >= 48:
+        if total_words >= 40:
             break
+        if total_words + len(passage.split()) <= 58:
+            chosen.append(passage)
+            total_words += len(passage.split())
 
-    narration = " ".join(selected).strip()
-    if len(narration.split()) < 28:
-        print("RSS narration skipped: source facts are too short for a responsible Short.")
-        return ""
+    body = " ".join(chosen).strip()
+    body_words = body.split()
+    if len(body_words) < 20:
+        # A single sourced passage can still make a short explainer; do not
+        # pad it with invented context just to hit an arbitrary word count.
+        if len(raw.split()) >= 20:
+            body = " ".join(raw.split()[:58])
+        else:
+            print("RSS narration skipped: source does not contain enough facts.")
+            return ""
 
-    # Generic audience prompt; it adds no factual claim.
-    narration += " What do you think about this development?"
-    narration = " ".join(narration.split())
-    print(
-        "Source-grounded hook selected:",
-        hook[:140],
-        "| narration words:",
-        len(narration.split())
-    )
-    return narration
-
+    # Keep a short direct hook, then let the source establish the context.
+    body = re.sub(r"\s+", " ", body).strip()
+    if not body.endswith((".", "!", "?")):
+        body += "."
+    body += " What do you think about this development?"
+    print("Source-grounded hook:", hook[:130], "| narration words:", len(body.split()))
+    return body
 
 
 # =========================================================
@@ -450,6 +449,7 @@ def load_local_image(path):
 
 IMAGE_ATTRIBUTIONS = []
 HF_AI_DISABLED = False
+HF_AI_ATTEMPTED = False
 OPENVERSE_RATE_LIMITED = False
 COMMONS_RATE_LIMITED = False
 
@@ -650,9 +650,14 @@ def generate_free_ai_news_image(headline, scene_text, index, visual_no=0):
     Free quota is limited and shared; HF_TOKEN can improve authenticated
     access when the user adds a read/inference-enabled token as a GitHub Secret.
     """
-    global HF_AI_DISABLED
-    if HF_AI_DISABLED or os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
+    global HF_AI_DISABLED, HF_AI_ATTEMPTED
+    # Public free ZeroGPU quota is shared. Limit each run to one attempt;
+    # all remaining stories use attractive local designed artwork.
+    if HF_AI_DISABLED or HF_AI_ATTEMPTED:
         return None
+    if os.getenv("ENABLE_HF_IMAGE_GENERATION", "true").lower() not in ("1", "true", "yes"):
+        return None
+    HF_AI_ATTEMPTED = True
     scene = re.sub(r"\s+", " ", f"{headline}. {scene_text}").strip()
     prompt = (
         "Photorealistic editorial news photography for a professional US news "
@@ -1424,16 +1429,30 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
 
 
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
-    """Use the locally generated editorial illustration; no external image APIs."""
+    """Create several distinct visual beats with a free local-art fallback."""
+    visuals = []
     if fallback_image and Path(fallback_image).exists():
-        print("Using local editorial illustration for this story.")
-        return [Path(fallback_image)]
-    try:
-        image_path = create_story_illustration(headline, summary, index)
-        return [Path(image_path)] if image_path and Path(image_path).exists() else []
-    except Exception as error:
-        print("Local illustration creation failed:", str(error)[:240])
-        return []
+        visuals.append(Path(fallback_image))
+    for visual_no, segment in enumerate(split_script_for_visuals(script, 3), 1):
+        try:
+            # First slide may use the already-created photorealistic hero image.
+            # Later slides are purpose-built scene illustrations, not repeated copies.
+            image_path = create_story_illustration(
+                headline, segment, index * 10 + visual_no
+            )
+            if image_path and Path(image_path).exists():
+                visuals.append(Path(image_path))
+        except Exception as error:
+            print("Local scene artwork failed:", str(error)[:180])
+    unique = []
+    hashes = set()
+    for path in visuals:
+        digest = hashlib.md5(path.read_bytes()).hexdigest()
+        if digest not in hashes:
+            hashes.add(digest)
+            unique.append(path)
+    print("Distinct visual scenes prepared:", len(unique))
+    return unique or ([] if not fallback_image else [Path(fallback_image)])
 
 
 def create_story_slideshow(headline, index, visuals, duration):
