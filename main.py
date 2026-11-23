@@ -288,20 +288,103 @@ def fetch_source_article_text(url):
 
 
 def make_rss_only_script(headline, summary):
-    """Build narration only from the publisher's headline and article text."""
-    clean = html.unescape(re.sub(r"<[^>]+>", " ", summary or ""))
-    clean = re.sub(r"\s+", " ", clean).strip(" .")
-    title = re.sub(r"\s+", " ", headline or "").strip(" .")
-    if not clean:
+    """
+    Build a retention-focused Shorts narration using only publisher-supplied facts.
+    The opening line is selected from the source text, not invented by the model.
+    """
+    raw = html.unescape(re.sub(r"<[^>]+>", " ", summary or ""))
+    raw = re.sub(r"\s+", " ", raw).strip()
+    title = re.sub(r"\s+", " ", html.unescape(headline or "")).strip(" .")
+
+    if not raw:
         print("RSS narration skipped: publisher supplied no readable story text.")
         return ""
-    words = f"{title}. {clean}".split()
-    if len(words) < 35:
-        print("RSS narration skipped: source headline and article contain fewer than 35 words.")
+
+    # Remove common feed boilerplate and repeated fragments before sentence scoring.
+    boilerplate = (
+        "read more", "click here", "subscribe to", "sign up for",
+        "listen to the podcast", "watch live", "get the latest"
+    )
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9“\"'])", raw)
+    clean_sentences = []
+    seen_sentences = set()
+    for sentence in sentences:
+        sentence = re.sub(r"\s+", " ", sentence).strip(" -•|")
+        normalized = re.sub(r"[^a-z0-9 ]", "", sentence.lower()).strip()
+        words = sentence.split()
+        if len(words) < 7 or len(words) > 48:
+            continue
+        if any(phrase in sentence.lower() for phrase in boilerplate):
+            continue
+        if normalized and normalized not in seen_sentences:
+            clean_sentences.append(sentence)
+            seen_sentences.add(normalized)
+
+    if not clean_sentences:
+        print("RSS narration skipped: no complete, usable source sentences.")
         return ""
-    selected = words[:78]
-    print("Using deterministic source-only narration:", len(selected), "words.")
-    return " ".join(selected)
+
+    # Prefer concrete, informative sentences for the opening hook.
+    action_terms = (
+        "announced", "approved", "rejected", "won", "lost", "filed",
+        "ruled", "voted", "launched", "reported", "confirmed", "said",
+        "will", "plans", "reached", "began", "ended", "ordered", "passed"
+    )
+    def sentence_score(sentence):
+        words = sentence.split()
+        score = 0
+        if 9 <= len(words) <= 25:
+            score += 3
+        if re.search(r"\d", sentence):
+            score += 2
+        if any(term in sentence.lower() for term in action_terms):
+            score += 2
+        if re.search(r"\b[A-Z][a-z]{2,}\b", sentence):
+            score += 1
+        if len(words) > 35:
+            score -= 2
+        return score
+
+    ranked = sorted(
+        enumerate(clean_sentences),
+        key=lambda pair: (sentence_score(pair[1]), -pair[0]),
+        reverse=True
+    )
+    hook_index, hook = ranked[0]
+    # Keep the selected hook first; then restore source order for the supporting facts.
+    supporting = [
+        sentence for i, sentence in enumerate(clean_sentences)
+        if i != hook_index
+    ]
+    ordered = [hook] + supporting
+
+    selected = []
+    word_count = 0
+    for sentence in ordered:
+        count = len(sentence.split())
+        if word_count + count > 62 and word_count >= 35:
+            continue
+        selected.append(sentence)
+        word_count += count
+        if word_count >= 48:
+            break
+
+    narration = " ".join(selected).strip()
+    if len(narration.split()) < 35:
+        print("RSS narration skipped: source facts are too short for a responsible Short.")
+        return ""
+
+    # Generic audience prompt; it adds no factual claim.
+    narration += " What do you think about this development?"
+    narration = " ".join(narration.split())
+    print(
+        "Source-grounded hook selected:",
+        hook[:140],
+        "| narration words:",
+        len(narration.split())
+    )
+    return narration
+
 
 
 # =========================================================
@@ -1619,7 +1702,7 @@ def main():
             print("STORY SKIPPED BEFORE GEMINI: no suitable real or photorealistic visual available:", headline)
             continue
 
-        # Deterministic source-only narration; Gemini quota is not required.
+        # Build a source-grounded opening hook and concise supporting narration. Gemini quota is not required.
         script = make_rss_only_script(headline, summary)
         used_rss_fallback = True
         minimum_words = 35
