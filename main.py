@@ -1148,9 +1148,10 @@ def create_ass(script, duration, path):
     if not words:
         return False
 
+    # Three-word caption beats make the opening hook easier to read on phones.
     chunks = [
-        words[i:i + 4]
-        for i in range(0, len(words), 4)
+        words[i:i + 3]
+        for i in range(0, len(words), 3)
     ]
 
     with open(
