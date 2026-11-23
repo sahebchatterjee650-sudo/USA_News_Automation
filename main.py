@@ -908,7 +908,21 @@ def create_story_illustration(headline, summary, index):
 
 
 def get_news_image(headline, summary, index):
-    """Single zero-cost visual path: a clearly labelled local editorial illustration."""
+    """
+    Prefer a photorealistic contextual AI visual from the free Hugging Face Space.
+    If the public Space is unavailable, fall back to an original local editorial
+    illustration. Never portray an invented scene as documentary evidence.
+    """
+    try:
+        ai_image = generate_free_ai_news_image(
+            headline, summary, index, visual_no=0
+        )
+        if ai_image and Path(ai_image).exists():
+            print("Using photorealistic AI visual for story:", index)
+            return Path(ai_image)
+    except Exception as error:
+        print("AI visual unavailable; using local artwork:", str(error)[:200])
+
     try:
         return create_story_illustration(headline, summary, index)
     except Exception as error:
