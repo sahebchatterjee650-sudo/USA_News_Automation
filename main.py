@@ -261,6 +261,80 @@ def fetch_multi_source_news():
     return entries
 
 
+def fetch_google_trends_us():
+    """Load US trending searches as discovery hints, never as factual sources."""
+    url = "https://trends.google.com/trending/rss?geo=US"
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; DigitalOrbitTrendDiscovery/1.0)"},
+            timeout=12
+        )
+        response.raise_for_status()
+        parsed = feedparser.parse(response.content)
+        topics = []
+        for item in parsed.entries[:40]:
+            title = re.sub(r"\s+", " ", html.unescape(item.get("title", ""))).strip()
+            if title and title.lower() not in {x.lower() for x in topics}:
+                topics.append(title)
+        print("US Google Trends topics loaded:", len(topics))
+        if topics:
+            print("Trend discovery signals:", " | ".join(topics[:12]))
+        return topics
+    except Exception as error:
+        print("Google Trends unavailable; continuing with publisher recency:", str(error)[:180])
+        return []
+
+
+def rank_stories_by_trend_interest(entries, trending_topics):
+    """Prioritize publisher stories that overlap current US search trends."""
+    if not trending_topics:
+        return entries
+
+    stop = {
+        "the", "and", "for", "with", "from", "after", "over", "into", "says",
+        "said", "will", "what", "when", "where", "could", "would", "about",
+        "this", "that", "have", "been", "were", "they", "their", "news",
+        "latest", "update", "today", "live", "video"
+    }
+
+    def tokens(value):
+        return {
+            word for word in re.findall(r"[a-z0-9]{3,}", (value or "").lower())
+            if word not in stop
+        }
+
+    trend_sets = [(topic, tokens(topic)) for topic in trending_topics]
+    ranked = []
+    for original_index, item in enumerate(entries):
+        headline = item.get("title", "")
+        headline_tokens = tokens(headline)
+        best_score = 0
+        matched_topic = ""
+        for topic, topic_tokens in trend_sets:
+            if not topic_tokens or not headline_tokens:
+                continue
+            overlap = len(headline_tokens & topic_tokens)
+            score = overlap * 2
+            if topic.lower() in headline.lower() or headline.lower() in topic.lower():
+                score += 3
+            if overlap and score > best_score:
+                best_score = score
+                matched_topic = topic
+        item["_trend_score"] = best_score
+        item["_trend_match"] = matched_topic
+        ranked.append((best_score, original_index, item))
+
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    matches = sum(1 for score, _, _ in ranked if score > 0)
+    print("Publisher stories matched to current US trends:", matches)
+    for score, _, item in ranked[:8]:
+        if score:
+            print("TREND PRIORITY:", item.get("title", "")[:120],
+                  "| matched trend:", item.get("_trend_match", ""))
+    return [item for _, _, item in ranked]
+
+
 def fetch_source_article_text(url):
     """Fetch readable publisher paragraphs; never invent or infer missing facts."""
     if not url:
@@ -1611,6 +1685,8 @@ def main():
             )
 
     feed_entries = fetch_multi_source_news()
+    trend_topics = fetch_google_trends_us()
+    feed_entries = rank_stories_by_trend_interest(feed_entries, trend_topics)
 
     if not feed_entries:
         raise RuntimeError("No RSS news received from any configured source.")
