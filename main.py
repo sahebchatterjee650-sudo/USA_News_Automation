@@ -312,7 +312,8 @@ def make_rss_only_script(headline, summary):
         sentence = re.sub(r"\s+", " ", sentence).strip(" -•|")
         normalized = re.sub(r"[^a-z0-9 ]", "", sentence.lower()).strip()
         words = sentence.split()
-        if len(words) < 7 or len(words) > 48:
+        # Publisher feeds often contain longer factual sentences.
+        if len(words) < 5 or len(words) > 65:
             continue
         if any(phrase in sentence.lower() for phrase in boilerplate):
             continue
@@ -370,7 +371,7 @@ def make_rss_only_script(headline, summary):
             break
 
     narration = " ".join(selected).strip()
-    if len(narration.split()) < 35:
+    if len(narration.split()) < 28:
         print("RSS narration skipped: source facts are too short for a responsible Short.")
         return ""
 
@@ -1709,18 +1710,10 @@ def main():
 
             continue
 
-        # Preflight the required real/licensed cover photo BEFORE spending Gemini quota.
-        # Stories without a suitable photograph are skipped without an AI script call.
-        next_index = video_count + 1
-        news_image = get_news_image(headline, summary, next_index)
-        if news_image is None:
-            print("STORY SKIPPED BEFORE GEMINI: no suitable real or photorealistic visual available:", headline)
-            continue
-
-        # Build a source-grounded opening hook and concise supporting narration. Gemini quota is not required.
+        # Validate source-grounded narration BEFORE spending limited AI image quota.
         script = make_rss_only_script(headline, summary)
         used_rss_fallback = True
-        minimum_words = 35
+        minimum_words = 28
 
         if (
             not script
@@ -1730,6 +1723,13 @@ def main():
 
             print("Story skipped: insufficient safe script content:", headline)
 
+            continue
+
+        # Generate visuals only for stories that passed factual/script checks.
+        next_index = video_count + 1
+        news_image = get_news_image(headline, summary, next_index)
+        if news_image is None:
+            print("STORY SKIPPED: both AI visual and local artwork failed:", headline)
             continue
 
         try:
