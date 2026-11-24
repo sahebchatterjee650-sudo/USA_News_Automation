@@ -1023,129 +1023,160 @@ def save_image_attributions():
 # DIGITAL ORBIT VIDEO BACKGROUND
 # =========================================================
 
-def create_background(headline, index, news_image=None, output_path=None):
+def get_story_category(headline):
+    text = (headline or "").lower()
+    categories = [
+        ("TECH & AI", ("ai ", "artificial intelligence", "technology", "tech ", "cyber", "software", "chip", "blacklist")),
+        ("US POLITICS", ("trump", "congress", "senate", "white house", "election", "democrat", "republican", "governor")),
+        ("BUSINESS & ECONOMY", ("market", "stock", "economy", "inflation", "bank", "trade", "tariff", "jobs", "company", "business")),
+        ("PUBLIC SAFETY", ("police", "shooting", "fire", "crash", "attack", "investigation", "arrest", "safety")),
+        ("WORLD NEWS", ("ukraine", "russia", "china", "iran", "israel", "warship", "zelensky", "putin", "world")),
+        ("WEATHER & CLIMATE", ("storm", "hurricane", "weather", "snow", "flood", "climate", "temperature")),
+        ("SPORTS", ("nfl", "nba", "mlb", "football", "basketball", "soccer", "baseball", "game", "team")),
+        ("TRAVEL & TRANSPORT", ("delta", "airline", "airport", "flight", "travel", "rail", "transport", "traffic", "delays")),
+    ]
+    for label, keywords in categories:
+        if any(keyword in text for keyword in keywords):
+            return label
+    return "TOP NEWS"
 
-    # Broadcast-style vertical layout: masthead, headline, hero image,
-    # lower-third, caption-safe area and a separate ticker strip.
-    background = Image.new("RGB", (WIDTH, HEIGHT), (4, 13, 31))
-    draw = ImageDraw.Draw(background)
 
-    for y in range(HEIGHT):
-        blend = y / HEIGHT
-        color = (
-            int(4 + 5 * blend),
-            int(14 + 12 * blend),
-            int(34 + 24 * blend)
-        )
-        draw.line((0, y, WIDTH, y), fill=color)
+def get_category_accent(category):
+    palette = {
+        "TECH & AI": (42, 190, 255),
+        "US POLITICS": (255, 75, 95),
+        "BUSINESS & ECONOMY": (65, 220, 165),
+        "PUBLIC SAFETY": (255, 155, 55),
+        "WORLD NEWS": (170, 135, 255),
+        "WEATHER & CLIMATE": (70, 190, 235),
+        "SPORTS": (255, 195, 65),
+        "TRAVEL & TRANSPORT": (65, 205, 220),
+        "TOP NEWS": (45, 190, 235),
+    }
+    return palette.get(category, palette["TOP NEWS"])
 
-    # Subtle broadcast grid / light accents.
-    draw.rectangle((0, 0, WIDTH, 235), fill=(2, 9, 23))
-    draw.rectangle((0, 230, WIDTH, 238), fill=(25, 170, 225))
 
-    logo = load_local_image(LOGO_FILE)
-    if logo is not None:
-        logo.thumbnail((142, 142), Image.Resampling.LANCZOS)
-        background.paste(logo, (42, 38))
-        draw = ImageDraw.Draw(background)
-        title_x = 215
-    else:
-        title_x = 55
-
-    draw.text((title_x, 48), "DIGITAL ORBIT",
-              font=get_font(58, True), fill=(250, 252, 255))
-    draw.text((title_x, 125), "USA NEWS  |  NEWS BRIEFING",
-              font=get_font(31, True), fill=(40, 210, 245))
-
-    draw.rounded_rectangle((790, 65, 1035, 130), radius=16,
-                           fill=(190, 24, 45))
-    draw.text((912, 97), "LIVE UPDATE", font=get_font(27, True),
-              fill="white", anchor="mm")
-
-    # Headline panel.
-    draw.rounded_rectangle((38, 275, 1042, 565), radius=26,
-                           fill=(7, 25, 52), outline=(35, 165, 220), width=4)
-    draw.text((75, 305), "TOP STORY", font=get_font(28, True),
-              fill=(255, 198, 65))
-
-    headline_font = get_font(43, True)
-    words = headline.upper().split()
+def draw_wrapped_text(draw, text, font, max_width, max_lines=4):
+    words = (text or "").upper().split()
     lines, current = [], ""
     for word in words:
-        trial = (current + " " + word).strip()
-        if draw.textbbox((0, 0), trial, font=headline_font)[2] <= 900:
-            current = trial
+        candidate = (current + " " + word).strip()
+        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
+            current = candidate
         else:
             if current:
                 lines.append(current)
             current = word
     if current:
         lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        while last and draw.textbbox((0, 0), last + "...", font=font)[2] > max_width:
+            last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+        lines[-1] = last.rstrip(" ,.-") + "..."
+    return lines
 
-    # Fit long headlines safely into the panel.
-    if len(lines) > 4:
-        headline_font = get_font(36, True)
-        lines, current = [], ""
-        for word in words:
-            trial = (current + " " + word).strip()
-            if draw.textbbox((0, 0), trial, font=headline_font)[2] <= 920:
-                current = trial
-            else:
-                if current:
-                    lines.append(current)
-                current = word
-        if current:
-            lines.append(current)
 
-    y = 355 if len(lines) <= 3 else 340
-    line_gap = 52 if len(lines) <= 3 else 46
-    for line in lines[:4]:
-        draw.text((540, y), line, font=headline_font,
-                  fill=(248, 250, 255), anchor="mt")
-        y += line_gap
+def create_background(headline, index, news_image=None, output_path=None):
+    """Create a polished vertical news scene with category-specific styling."""
+    category = get_story_category(headline)
+    accent = get_category_accent(category)
+    background = Image.new("RGB", (WIDTH, HEIGHT), (5, 12, 27))
+    draw = ImageDraw.Draw(background)
 
-    # Main editorial image, using licensed image or clearly labeled illustration.
-    draw.rounded_rectangle((38, 600, 1042, 1285), radius=24,
-                           fill=(9, 27, 52), outline=(35, 185, 230), width=4)
+    # Deep broadcast gradient; category accent changes the visual identity
+    # so every topic does not look like the same generic blue news card.
+    for y in range(HEIGHT):
+        blend = y / HEIGHT
+        color = (
+            int(4 + accent[0] * 0.035 * blend),
+            int(10 + accent[1] * 0.045 * blend),
+            int(25 + accent[2] * 0.10 * blend),
+        )
+        draw.line((0, y, WIDTH, y), fill=color)
+
+    # Top identity bar.
+    draw.rectangle((0, 0, WIDTH, 225), fill=(3, 8, 19))
+    draw.rectangle((0, 220, WIDTH, 229), fill=accent)
+    logo = load_local_image(LOGO_FILE)
+    title_x = 48
+    if logo is not None:
+        logo.thumbnail((128, 128), Image.Resampling.LANCZOS)
+        background.paste(logo, (42, 42))
+        title_x = 195
+    draw = ImageDraw.Draw(background)
+    draw.text((title_x, 43), "DIGITAL ORBIT", font=get_font(55, True),
+              fill=(250, 252, 255))
+    draw.text((title_x, 118), "USA NEWS  /  EXPLAINED", font=get_font(29, True),
+              fill=accent)
+
+    # Topic badge and story number give the layout a stronger editorial hierarchy.
+    draw.rounded_rectangle((48, 265, 490, 330), radius=18, fill=accent)
+    draw.text((72, 280), category, font=get_font(27, True), fill=(5, 12, 24))
+    draw.rounded_rectangle((820, 265, 1032, 330), radius=18, fill=(180, 28, 48))
+    draw.text((926, 297), "TOP STORY", font=get_font(24, True),
+              fill="white", anchor="mm")
+
+    # A distinct, large hero frame. If an image is unavailable, retain a
+    # designed illustration panel rather than leaving a blank placeholder.
+    draw.rounded_rectangle((38, 365, 1042, 1285), radius=32,
+                           fill=(10, 24, 43), outline=accent, width=5)
     if news_image is not None and Path(news_image).exists():
         try:
             photo = Image.open(news_image).convert("RGB")
-            photo = ImageOps.fit(
-                photo, (960, 635),
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.45)
-            )
-            background.paste(photo, (60, 625))
+            photo = ImageOps.fit(photo, (960, 880),
+                                 method=Image.Resampling.LANCZOS,
+                                 centering=(0.5, 0.42))
+            background.paste(photo, (60, 390))
         except Exception as error:
-            print("Could not place news image:", str(error)[:200])
-            draw.text((540, 940), "NEWS VISUAL", font=get_font(48, True),
-                      fill=(210, 230, 245), anchor="mm")
+            print("Could not place story image:", str(error)[:180])
+            draw = ImageDraw.Draw(background)
+            draw.text((540, 820), category, font=get_font(48, True),
+                      fill=accent, anchor="mm")
     else:
-        draw.text((540, 940), "NEWS VISUAL", font=get_font(48, True),
-                  fill=(210, 230, 245), anchor="mm")
+        # A clean category-colored editorial fallback.
+        draw.ellipse((220, 510, 860, 1150), outline=accent, width=18)
+        draw.ellipse((330, 620, 750, 1040), fill=(13, 42, 70))
+        draw.text((540, 820), category, font=get_font(44, True),
+                  fill=(240, 248, 255), anchor="mm")
 
     draw = ImageDraw.Draw(background)
-    draw.rounded_rectangle((60, 625, 1020, 1260), radius=18,
-                           outline=(55, 195, 235), width=4)
-    if news_image is not None and Path(news_image).name.startswith("ai_visual_"):
-        draw.rounded_rectangle((72, 1195, 360, 1242), radius=10, fill=(5, 18, 39))
-        draw.text((88, 1204), "AI-GENERATED VISUAL", font=get_font(18, True),
-                  fill=(230, 240, 250))
+    # Add a dark headline panel at the foot of the image for legibility.
+    draw.rounded_rectangle((60, 930, 1020, 1255), radius=24,
+                           fill=(3, 11, 25), outline=accent, width=3)
+    draw.rectangle((60, 930, 1020, 943), fill=accent)
+    title_font = get_font(48, True)
+    lines = draw_wrapped_text(draw, headline, title_font, 870, 4)
+    if len(lines) > 3:
+        title_font = get_font(42, True)
+        lines = draw_wrapped_text(draw, headline, title_font, 870, 4)
+    line_gap = 65 if title_font.size >= 48 else 57
+    y = 980
+    for line in lines:
+        draw.text((95, y), line, font=title_font,
+                  fill=(250, 252, 255))
+        y += line_gap
 
-    # Leave the lower-third clear; FFmpeg animates the red breaking-news
-    # banner and its title onto the screen during the first 0.6 seconds.
-    draw.rectangle((0, 1310, WIDTH, 1420), fill=(7, 19, 40))
-    draw.rectangle((0, 1420, WIDTH, 1427), fill=(25, 170, 225))
-    draw.text((55, 1450), "DIGITAL ORBIT  •  USA NEWS",
-              font=get_font(28, True), fill=(55, 210, 245))
-    draw.rounded_rectangle((38, 1495, 1042, 1660), radius=18,
-                           fill=(5, 18, 39), outline=(30, 125, 175), width=2)
-    draw.text((540, 1685), "STAY INFORMED  |  NEWS BRIEFING",
-              font=get_font(25, True), fill=(205, 225, 240), anchor="mm")
+    # Caption-safe lower third and clear call-to-action footer.
+    draw.rectangle((0, 1320, WIDTH, 1430), fill=(5, 12, 26))
+    draw.rectangle((0, 1320, WIDTH, 1328), fill=accent)
+    draw.rounded_rectangle((48, 1350, 520, 1410), radius=16,
+                           fill=(180, 28, 48))
+    draw.text((284, 1380), "WHAT YOU NEED TO KNOW",
+              font=get_font(25, True), fill="white", anchor="mm")
+    draw.text((540, 1500), "CLEAR FACTS. IMPORTANT STORIES.",
+              font=get_font(29, True), fill=(225, 235, 248), anchor="mm")
+    draw.text((540, 1580), "FOLLOW DIGITAL ORBIT",
+              font=get_font(34, True), fill=accent, anchor="mm")
+    draw.text((540, 1740), "INDEPENDENT NEWS BRIEFING",
+              font=get_font(23, True), fill=(170, 190, 210), anchor="mm")
 
     output = Path(output_path) if output_path else VIDEO_DIR / f"background_{index:02}.png"
     background.save(output)
     return output
+
+
 
 
 # =========================================================
@@ -1603,12 +1634,12 @@ def make_video(headline, script, index, news_image=None, summary=""):
         f"fade=t=out:st={max(0, duration - 0.45):.3f}:d=0.45"
     )
     lower_third_filter = (
-        "drawbox=x='-w+min(t/0.55\\,1)*w':y=1310:w=1080:h=110:"
+        "drawbox=x='-w+min(t/0.45\\,1)*w':y=1310:w=1080:h=110:"
         "color=0xBE162D@1:t=fill,"
-        "drawtext=text='BREAKING NEWS':"
+        "drawtext=text='WHAT YOU NEED TO KNOW':"
         "fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf':"
-        "fontsize=43:fontcolor=white:"
-        "x='-tw+min(t/0.55\\,1)*135':y=1340,"
+        "fontsize=39:fontcolor=white:"
+        "x='-tw+min(t/0.45\\,1)*135':y=1340,"
         "drawbox=x=0:y=230:w='min(t/0.8\\,1)*1080':h=7:"
         "color=0x19AAE1@1:t=fill"
     )
