@@ -4,18 +4,18 @@ name: USA News Automation
 on:
   workflow_dispatch:
 
-  # Start two hours before the intended Eastern publication slots to allow for Actions queue delays.
+  # Start at :17 (off the top of the hour) to reduce schedule queue delays; publication targets remain unchanged.
   # The publication targets below remain 09:00, 13:00 and 17:00 ET.
   schedule:
     # Eastern Daylight Time (EDT)
-    - cron: '0 11 * * *'
-    - cron: '0 15 * * *'
-    - cron: '0 19 * * *'
+    - cron: '17 11 * * *'
+    - cron: '17 15 * * *'
+    - cron: '17 19 * * *'
 
     # Eastern Standard Time (EST)
-    - cron: '0 12 * * *'
-    - cron: '0 16 * * *'
-    - cron: '0 20 * * *'
+    - cron: '17 12 * * *'
+    - cron: '17 16 * * *'
+    - cron: '17 20 * * *'
 
 permissions:
   contents: read
@@ -53,37 +53,37 @@ jobs:
           else
             case "$SCHEDULE_TIME" in
 
-              "0 11 * * *")
+              "17 11 * * *")
                 if [ "$ET_OFFSET" = "-0400" ]; then
                   BATCH=1
                 fi
                 ;;
 
-              "0 15 * * *")
+              "17 15 * * *")
                 if [ "$ET_OFFSET" = "-0400" ]; then
                   BATCH=2
                 fi
                 ;;
 
-              "0 19 * * *")
+              "17 19 * * *")
                 if [ "$ET_OFFSET" = "-0400" ]; then
                   BATCH=3
                 fi
                 ;;
 
-              "0 12 * * *")
+              "17 12 * * *")
                 if [ "$ET_OFFSET" = "-0500" ]; then
                   BATCH=1
                 fi
                 ;;
 
-              "0 16 * * *")
+              "17 16 * * *")
                 if [ "$ET_OFFSET" = "-0500" ]; then
                   BATCH=2
                 fi
                 ;;
 
-              "0 20 * * *")
+              "17 20 * * *")
                 if [ "$ET_OFFSET" = "-0500" ]; then
                   BATCH=3
                 fi
