@@ -4,6 +4,16 @@ name: USA News Automation
 on:
   workflow_dispatch:
 
+  # Automatically test every new code/workflow update pushed to main.
+  push:
+    branches:
+      - main
+    paths:
+      - "main.py"
+      - "youtube_upload.py"
+      - "requirements.txt"
+      - ".github/workflows/news.yml"
+
   # Start at :17 (off the top of the hour) to reduce schedule queue delays; publication targets remain unchanged.
   # The publication targets below remain 09:00, 13:00 and 17:00 ET.
   schedule:
