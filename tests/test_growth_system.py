@@ -5,6 +5,7 @@ import main
 
 
 class GrowthRankingTests(unittest.TestCase):
+    """Offline checks only; these tests never call paid APIs or upload videos."""
     def test_growth_score_is_bounded(self):
         entry = {
             "title": "US Congress approves new tax bill for 2026",
