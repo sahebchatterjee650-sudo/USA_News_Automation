@@ -335,6 +335,103 @@ def rank_stories_by_trend_interest(entries, trending_topics):
     return [item for _, _, item in ranked]
 
 
+def score_viral_opportunity(entry):
+    """
+    Editorial prioritization score (0-100), NOT a prediction of virality.
+    Uses only RSS headline, publisher timestamp and Google Trends overlap.
+    """
+    headline = (entry.get("title") or "").strip()
+    text = headline.lower()
+    score = 0
+    reasons = []
+
+    # Current US search interest is a discovery signal, never evidence of truth.
+    trend_score = min(30, int(entry.get("_trend_score", 0)) * 5)
+    if trend_score:
+        score += trend_score
+        reasons.append("US trend match")
+
+    # Give newer publisher items priority; unknown timestamps receive a neutral score.
+    published = entry.get("published_parsed") or entry.get("updated_parsed")
+    if published:
+        try:
+            age_hours = max(0, (time.time() - time.mktime(published)) / 3600)
+            freshness = max(0, 25 - int(age_hours / 2))
+            score += freshness
+            if freshness >= 18:
+                reasons.append("very recent")
+            elif freshness:
+                reasons.append("recent")
+        except Exception:
+            score += 10
+    else:
+        score += 10
+
+    # Practical impact topics often matter to a broad US audience.
+    impact_terms = (
+        "election", "vote", "president", "congress", "senate", "supreme court",
+        "law", "bill", "tax", "inflation", "prices", "gas", "jobs", "layoffs",
+        "interest rate", "mortgage", "social security", "medicare", "health",
+        "safety", "warning", "storm", "hurricane", "wildfire", "earthquake",
+        "school", "student", "airport", "travel", "shutdown", "strike"
+    )
+    matched_impact = [term for term in impact_terms if term in text]
+    if matched_impact:
+        score += min(20, 8 + (len(matched_impact) - 1) * 4)
+        reasons.append("public impact")
+
+    # Specific names, figures or dates make a headline easier to understand.
+    if re.search(r"\d", headline):
+        score += 8
+        reasons.append("specific detail")
+    if 6 <= len(headline.split()) <= 16:
+        score += 7
+    elif 4 <= len(headline.split()) <= 20:
+        score += 4
+
+    score = min(100, score)
+    entry["_growth_score"] = score
+    entry["_growth_reasons"] = reasons
+    return score
+
+
+def rank_stories_for_growth(entries):
+    """Prioritize explainable, timely, relevant stories without hype or paid APIs."""
+    ranked = []
+    for original_index, entry in enumerate(entries):
+        score = score_viral_opportunity(entry)
+        ranked.append((score, original_index, entry))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    print("EDITORIAL GROWTH PRIORITY (not a virality guarantee):")
+    for score, _, entry in ranked[:10]:
+        print("GROWTH SCORE:", score, "|",
+              ", ".join(entry.get("_growth_reasons", [])) or "baseline",
+              "|", (entry.get("title") or "")[:140])
+    return [entry for _, _, entry in ranked]
+
+
+def save_growth_priority_report(entries):
+    """Save an auditable shortlist so editors can compare priorities with outcomes."""
+    lines = [
+        "DIGITAL ORBIT — EDITORIAL GROWTH PRIORITY",
+        "Scores are ranking hints only, not predicted views or a virality guarantee.",
+        "Google Trends is a discovery signal, not a factual source.",
+        ""
+    ]
+    for number, entry in enumerate(entries[:15], 1):
+        reasons = ", ".join(entry.get("_growth_reasons", [])) or "baseline"
+        lines.extend([
+            f"{number}. SCORE {entry.get('_growth_score', 0)}/100 — {entry.get('title', '').strip()}",
+            f"Reason: {reasons}",
+            f"Trend match: {entry.get('_trend_match', '') or 'none'}",
+            f"Source: {entry.get('link', '')}",
+            ""
+        ])
+    report = VIDEO_DIR / "growth_priority_report.txt"
+    report.write_text("\n".join(lines), encoding="utf-8")
+    print("EDITORIAL GROWTH REPORT SAVED:", report)
+
+
 def fetch_source_article_text(url):
     """Fetch readable publisher paragraphs; never invent or infer missing facts."""
     if not url:
@@ -1534,29 +1631,59 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
 
 
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
-    """Create several distinct visual beats with a free local-art fallback."""
+    """Build a hybrid scene sequence: licensed real photos first, then local art."""
     visuals = []
     if fallback_image and Path(fallback_image).exists():
         visuals.append(Path(fallback_image))
-    for visual_no, segment in enumerate(split_script_for_visuals(script, 3), 1):
+
+    segments = split_script_for_visuals(script, 3)
+    for visual_no, segment in enumerate(segments, 1):
+        image_path = None
+
+        # Prefer a relevant, openly licensed real-world image for each scene.
+        # Provider functions enforce license filters and attribution.
         try:
-            # First slide may use the already-created photorealistic hero image.
-            # Later slides are purpose-built scene illustrations, not repeated copies.
-            image_path = create_story_illustration(
-                headline, segment, index * 10 + visual_no
+            image_path = download_visual_for_segment(
+                headline, segment, index, visual_no
             )
-            if image_path and Path(image_path).exists():
-                visuals.append(Path(image_path))
         except Exception as error:
-            print("Local scene artwork failed:", str(error)[:180])
+            print("Openverse scene lookup failed:", str(error)[:160])
+
+        if not image_path:
+            try:
+                image_path = download_commons_visual_for_segment(
+                    headline, segment, index, visual_no
+                )
+            except Exception as error:
+                print("Wikimedia scene lookup failed:", str(error)[:160])
+
+        # A designed illustration keeps the scene sequence complete when
+        # public image providers are unavailable, rate-limited, or irrelevant.
+        if not image_path:
+            try:
+                image_path = create_story_illustration(
+                    headline, segment, index * 10 + visual_no
+                )
+            except Exception as error:
+                print("Local scene artwork failed:", str(error)[:180])
+
+        if image_path and Path(image_path).exists():
+            visuals.append(Path(image_path))
+
     unique = []
     hashes = set()
     for path in visuals:
-        digest = hashlib.md5(path.read_bytes()).hexdigest()
+        try:
+            digest = hashlib.md5(path.read_bytes()).hexdigest()
+        except Exception as error:
+            print("Visual file could not be read:", str(error)[:120])
+            continue
         if digest not in hashes:
             hashes.add(digest)
             unique.append(path)
-    print("Distinct visual scenes prepared:", len(unique))
+
+    print("Hybrid visual scenes prepared:", len(unique))
+    print("Licensed photo attributions collected:", len(IMAGE_ATTRIBUTIONS))
     return unique or ([] if not fallback_image else [Path(fallback_image)])
 
 
@@ -1683,6 +1810,48 @@ def make_video(headline, script, index, news_image=None, summary=""):
 # MAIN PROGRAM
 # =========================================================
 
+def passes_fast_clear_reliable_gate(entry, headline, link, summary):
+    """Mandatory editorial gate: timely, understandable, source-traceable news."""
+    from datetime import datetime, timezone
+    from urllib.parse import urlparse
+
+    # FAST: reject stale/future-dated items when the publisher supplies a timestamp.
+    published = entry.get("published_parsed") or entry.get("updated_parsed")
+    if published:
+        try:
+            published_at = datetime.fromtimestamp(time.mktime(published), tz=timezone.utc)
+            age_hours = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+            if age_hours < -2 or age_hours > 48:
+                print("RELIABILITY GATE: stale or future-dated story skipped:", headline,
+                      "| age hours:", round(age_hours, 1))
+                return False
+        except Exception as error:
+            print("Publication timestamp could not be validated:", str(error)[:120])
+
+    # RELIABLE: require a valid HTTPS publisher link and enough source text.
+    try:
+        parsed = urlparse(link)
+        if parsed.scheme != "https" or not parsed.netloc or "." not in parsed.netloc:
+            print("RELIABILITY GATE: missing/invalid HTTPS source URL:", headline)
+            return False
+    except Exception:
+        print("RELIABILITY GATE: source URL parsing failed:", headline)
+        return False
+
+    if len(summary.split()) < 40:
+        print("CLEAR/RELIABLE GATE: not enough source detail to explain the story:", headline)
+        return False
+
+    # CLEAR: a usable headline and a source passage are mandatory. Do not
+    # manufacture context or consequences when the publisher has not reported them.
+    if len(headline.split()) < 4:
+        print("CLEAR GATE: headline lacks enough context:", headline)
+        return False
+
+    print("FAST/CLEAR/RELIABLE gate passed:", headline)
+    return True
+
+
 def main():
 
     print("===================================")
@@ -1718,6 +1887,10 @@ def main():
     feed_entries = fetch_multi_source_news()
     trend_topics = fetch_google_trends_us()
     feed_entries = rank_stories_by_trend_interest(feed_entries, trend_topics)
+    # Rank editorial opportunities using trend overlap, freshness and public impact.
+    # This is a prioritization heuristic, not a prediction or guarantee of virality.
+    feed_entries = rank_stories_for_growth(feed_entries)
+    save_growth_priority_report(feed_entries)
 
     if not feed_entries:
         raise RuntimeError("No RSS news received from any configured source.")
@@ -1827,13 +2000,10 @@ def main():
             print("DUPLICATE / NEAR-DUPLICATE SKIPPED:", headline, "| matched:", near_match)
             continue
 
-        if len(summary) < 40:
-
-            print(
-                "Story skipped: insufficient summary:",
-                headline
-            )
-
+        # Permanent editorial policy: Fast, Clear and Reliable.
+        # News must be recent (when timestamp is available), explainable,
+        # and traceable to the original HTTPS publisher report.
+        if not passes_fast_clear_reliable_gate(entry, headline, link, summary):
             continue
 
         # Validate source-grounded narration BEFORE spending limited AI image quota.

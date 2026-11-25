@@ -223,6 +223,7 @@ jobs:
             output_videos/community_quiz_*.jpg
             output_videos/community_quiz_*.txt
             output_videos/daily_top_3.txt
+            output_videos/growth_priority_report.txt
             output_videos/image_attributions.txt
             output_videos/scripts.txt
           if-no-files-found: ignore
