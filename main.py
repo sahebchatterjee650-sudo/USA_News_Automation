@@ -410,6 +410,28 @@ def rank_stories_for_growth(entries):
     return [entry for _, _, entry in ranked]
 
 
+def save_growth_priority_report(entries):
+    """Save an auditable shortlist so editors can compare priorities with outcomes."""
+    lines = [
+        "DIGITAL ORBIT — EDITORIAL GROWTH PRIORITY",
+        "Scores are ranking hints only, not predicted views or a virality guarantee.",
+        "Google Trends is a discovery signal, not a factual source.",
+        ""
+    ]
+    for number, entry in enumerate(entries[:15], 1):
+        reasons = ", ".join(entry.get("_growth_reasons", [])) or "baseline"
+        lines.extend([
+            f"{number}. SCORE {entry.get('_growth_score', 0)}/100 — {entry.get('title', '').strip()}",
+            f"Reason: {reasons}",
+            f"Trend match: {entry.get('_trend_match', '') or 'none'}",
+            f"Source: {entry.get('link', '')}",
+            ""
+        ])
+    report = VIDEO_DIR / "growth_priority_report.txt"
+    report.write_text("\n".join(lines), encoding="utf-8")
+    print("EDITORIAL GROWTH REPORT SAVED:", report)
+
+
 def fetch_source_article_text(url):
     """Fetch readable publisher paragraphs; never invent or infer missing facts."""
     if not url:
@@ -1868,6 +1890,7 @@ def main():
     # Rank editorial opportunities using trend overlap, freshness and public impact.
     # This is a prioritization heuristic, not a prediction or guarantee of virality.
     feed_entries = rank_stories_for_growth(feed_entries)
+    save_growth_priority_report(feed_entries)
 
     if not feed_entries:
         raise RuntimeError("No RSS news received from any configured source.")
