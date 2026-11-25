@@ -335,6 +335,81 @@ def rank_stories_by_trend_interest(entries, trending_topics):
     return [item for _, _, item in ranked]
 
 
+def score_viral_opportunity(entry):
+    """
+    Editorial prioritization score (0-100), NOT a prediction of virality.
+    Uses only RSS headline, publisher timestamp and Google Trends overlap.
+    """
+    headline = (entry.get("title") or "").strip()
+    text = headline.lower()
+    score = 0
+    reasons = []
+
+    # Current US search interest is a discovery signal, never evidence of truth.
+    trend_score = min(30, int(entry.get("_trend_score", 0)) * 5)
+    if trend_score:
+        score += trend_score
+        reasons.append("US trend match")
+
+    # Give newer publisher items priority; unknown timestamps receive a neutral score.
+    published = entry.get("published_parsed") or entry.get("updated_parsed")
+    if published:
+        try:
+            age_hours = max(0, (time.time() - time.mktime(published)) / 3600)
+            freshness = max(0, 25 - int(age_hours / 2))
+            score += freshness
+            if freshness >= 18:
+                reasons.append("very recent")
+            elif freshness:
+                reasons.append("recent")
+        except Exception:
+            score += 10
+    else:
+        score += 10
+
+    # Practical impact topics often matter to a broad US audience.
+    impact_terms = (
+        "election", "vote", "president", "congress", "senate", "supreme court",
+        "law", "bill", "tax", "inflation", "prices", "gas", "jobs", "layoffs",
+        "interest rate", "mortgage", "social security", "medicare", "health",
+        "safety", "warning", "storm", "hurricane", "wildfire", "earthquake",
+        "school", "student", "airport", "travel", "shutdown", "strike"
+    )
+    matched_impact = [term for term in impact_terms if term in text]
+    if matched_impact:
+        score += min(20, 8 + (len(matched_impact) - 1) * 4)
+        reasons.append("public impact")
+
+    # Specific names, figures or dates make a headline easier to understand.
+    if re.search(r"\d", headline):
+        score += 8
+        reasons.append("specific detail")
+    if 6 <= len(headline.split()) <= 16:
+        score += 7
+    elif 4 <= len(headline.split()) <= 20:
+        score += 4
+
+    score = min(100, score)
+    entry["_growth_score"] = score
+    entry["_growth_reasons"] = reasons
+    return score
+
+
+def rank_stories_for_growth(entries):
+    """Prioritize explainable, timely, relevant stories without hype or paid APIs."""
+    ranked = []
+    for original_index, entry in enumerate(entries):
+        score = score_viral_opportunity(entry)
+        ranked.append((score, original_index, entry))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    print("EDITORIAL GROWTH PRIORITY (not a virality guarantee):")
+    for score, _, entry in ranked[:10]:
+        print("GROWTH SCORE:", score, "|",
+              ", ".join(entry.get("_growth_reasons", [])) or "baseline",
+              "|", (entry.get("title") or "")[:140])
+    return [entry for _, _, entry in ranked]
+
+
 def fetch_source_article_text(url):
     """Fetch readable publisher paragraphs; never invent or infer missing facts."""
     if not url:
@@ -1790,6 +1865,9 @@ def main():
     feed_entries = fetch_multi_source_news()
     trend_topics = fetch_google_trends_us()
     feed_entries = rank_stories_by_trend_interest(feed_entries, trend_topics)
+    # Rank editorial opportunities using trend overlap, freshness and public impact.
+    # This is a prioritization heuristic, not a prediction or guarantee of virality.
+    feed_entries = rank_stories_for_growth(feed_entries)
 
     if not feed_entries:
         raise RuntimeError("No RSS news received from any configured source.")
