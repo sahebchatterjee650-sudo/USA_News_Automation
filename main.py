@@ -1534,29 +1534,59 @@ def download_commons_visual_for_segment(headline, segment, index, visual_no):
 
 
 def get_story_visuals(headline, summary, script, index, fallback_image=None):
-    """Create several distinct visual beats with a free local-art fallback."""
+    """Build a hybrid scene sequence: licensed real photos first, then local art."""
     visuals = []
     if fallback_image and Path(fallback_image).exists():
         visuals.append(Path(fallback_image))
-    for visual_no, segment in enumerate(split_script_for_visuals(script, 3), 1):
+
+    segments = split_script_for_visuals(script, 3)
+    for visual_no, segment in enumerate(segments, 1):
+        image_path = None
+
+        # Prefer a relevant, openly licensed real-world image for each scene.
+        # Provider functions enforce license filters and attribution.
         try:
-            # First slide may use the already-created photorealistic hero image.
-            # Later slides are purpose-built scene illustrations, not repeated copies.
-            image_path = create_story_illustration(
-                headline, segment, index * 10 + visual_no
+            image_path = download_image_for_segment(
+                headline, segment, index, visual_no
             )
-            if image_path and Path(image_path).exists():
-                visuals.append(Path(image_path))
         except Exception as error:
-            print("Local scene artwork failed:", str(error)[:180])
+            print("Openverse scene lookup failed:", str(error)[:160])
+
+        if not image_path:
+            try:
+                image_path = download_commons_visual_for_segment(
+                    headline, segment, index, visual_no
+                )
+            except Exception as error:
+                print("Wikimedia scene lookup failed:", str(error)[:160])
+
+        # A designed illustration keeps the scene sequence complete when
+        # public image providers are unavailable, rate-limited, or irrelevant.
+        if not image_path:
+            try:
+                image_path = create_story_illustration(
+                    headline, segment, index * 10 + visual_no
+                )
+            except Exception as error:
+                print("Local scene artwork failed:", str(error)[:180])
+
+        if image_path and Path(image_path).exists():
+            visuals.append(Path(image_path))
+
     unique = []
     hashes = set()
     for path in visuals:
-        digest = hashlib.md5(path.read_bytes()).hexdigest()
+        try:
+            digest = hashlib.md5(path.read_bytes()).hexdigest()
+        except Exception as error:
+            print("Visual file could not be read:", str(error)[:120])
+            continue
         if digest not in hashes:
             hashes.add(digest)
             unique.append(path)
-    print("Distinct visual scenes prepared:", len(unique))
+
+    print("Hybrid visual scenes prepared:", len(unique))
+    print("Licensed photo attributions collected:", len(IMAGE_ATTRIBUTIONS))
     return unique or ([] if not fallback_image else [Path(fallback_image)])
 
 
