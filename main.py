@@ -1713,6 +1713,48 @@ def make_video(headline, script, index, news_image=None, summary=""):
 # MAIN PROGRAM
 # =========================================================
 
+def passes_fast_clear_reliable_gate(entry, headline, link, summary):
+    """Mandatory editorial gate: timely, understandable, source-traceable news."""
+    from datetime import datetime, timezone
+    from urllib.parse import urlparse
+
+    # FAST: reject stale/future-dated items when the publisher supplies a timestamp.
+    published = entry.get("published_parsed") or entry.get("updated_parsed")
+    if published:
+        try:
+            published_at = datetime.fromtimestamp(time.mktime(published), tz=timezone.utc)
+            age_hours = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+            if age_hours < -2 or age_hours > 48:
+                print("RELIABILITY GATE: stale or future-dated story skipped:", headline,
+                      "| age hours:", round(age_hours, 1))
+                return False
+        except Exception as error:
+            print("Publication timestamp could not be validated:", str(error)[:120])
+
+    # RELIABLE: require a valid HTTPS publisher link and enough source text.
+    try:
+        parsed = urlparse(link)
+        if parsed.scheme != "https" or not parsed.netloc or "." not in parsed.netloc:
+            print("RELIABILITY GATE: missing/invalid HTTPS source URL:", headline)
+            return False
+    except Exception:
+        print("RELIABILITY GATE: source URL parsing failed:", headline)
+        return False
+
+    if len(summary.split()) < 40:
+        print("CLEAR/RELIABLE GATE: not enough source detail to explain the story:", headline)
+        return False
+
+    # CLEAR: a usable headline and a source passage are mandatory. Do not
+    # manufacture context or consequences when the publisher has not reported them.
+    if len(headline.split()) < 4:
+        print("CLEAR GATE: headline lacks enough context:", headline)
+        return False
+
+    print("FAST/CLEAR/RELIABLE gate passed:", headline)
+    return True
+
+
 def main():
 
     print("===================================")
@@ -1857,13 +1899,10 @@ def main():
             print("DUPLICATE / NEAR-DUPLICATE SKIPPED:", headline, "| matched:", near_match)
             continue
 
-        if len(summary) < 40:
-
-            print(
-                "Story skipped: insufficient summary:",
-                headline
-            )
-
+        # Permanent editorial policy: Fast, Clear and Reliable.
+        # News must be recent (when timestamp is available), explainable,
+        # and traceable to the original HTTPS publisher report.
+        if not passes_fast_clear_reliable_gate(entry, headline, link, summary):
             continue
 
         # Validate source-grounded narration BEFORE spending limited AI image quota.
