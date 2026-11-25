@@ -1546,7 +1546,7 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
         # Prefer a relevant, openly licensed real-world image for each scene.
         # Provider functions enforce license filters and attribution.
         try:
-            image_path = download_image_for_segment(
+            image_path = download_visual_for_segment(
                 headline, segment, index, visual_no
             )
         except Exception as error:
