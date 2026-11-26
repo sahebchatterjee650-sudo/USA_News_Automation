@@ -25,6 +25,17 @@ class GrowthRankingTests(unittest.TestCase):
         ranked = main.rank_stories_for_growth(entries)
         self.assertEqual(ranked[0]["title"], "Congress debates new tax bill")
 
+    def test_multiword_trends_reject_single_word_false_matches(self):
+        entries = [
+            {"title": "Russian forces hit Kyiv with ballistic missiles, mayor says"},
+            {"title": "Talking Shop with Tyler Cameron"},
+            {"title": "Amazon to launch Amazon Autos in UK in early 2027"},
+        ]
+        topics = ["watson hit", "cameron diaz", "superbowl 2027"]
+        ranked = main.rank_stories_by_trend_interest(entries, topics)
+        self.assertTrue(all(item.get("_trend_score", 0) == 0 for item in ranked))
+        self.assertTrue(all(item.get("_trend_match", "") == "" for item in ranked))
+
     def test_fast_clear_reliable_accepts_recent_traceable_story(self):
         entry = {"published_parsed": time.gmtime(time.time() - 3600)}
         headline = "US officials announce a major public safety update"
