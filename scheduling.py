@@ -41,6 +41,11 @@ def choose_adaptive_slot(now, hourly_stats=None, reserved_times=None):
     if not candidates:
         raise RuntimeError("No unreserved US Eastern publishing slot is available in the next 3 days.")
 
+    # Prefer the earliest calendar day with a free slot; do not push a batch
+    # days ahead merely because several hours have not been sampled yet.
+    earliest_day = min(item[0].date() for item in candidates)
+    candidates = [item for item in candidates if item[0].date() == earliest_day]
+
     total_samples = max(1, sum(int(v.get("count", 0)) for v in hourly_stats.values()))
     # UCB explores hours with little data, then increasingly favors hours with
     # stronger average views. The exploration term prevents premature lock-in.
