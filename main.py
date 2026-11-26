@@ -315,8 +315,15 @@ def rank_stories_by_trend_interest(entries, trending_topics):
             if not topic_tokens or not headline_tokens:
                 continue
             overlap = len(headline_tokens & topic_tokens)
+
+            # A single shared word is too weak to match a multi-word trend.
+            # This prevents unrelated headlines matching on generic words
+            # such as "hit", "Cameron", or a year alone.
+            if len(topic_tokens) > 1 and overlap < 2:
+                continue
+
             score = overlap * 2
-            if topic.lower() in headline.lower() or headline.lower() in topic.lower():
+            if overlap == len(topic_tokens):
                 score += 3
             if overlap and score > best_score:
                 best_score = score
