@@ -106,3 +106,33 @@ def validate_rendered_assets(video_path, thumbnail_path, captions_path):
     if not 12 <= duration <= 60:
         return False, f"video duration outside 12-60 seconds: {duration:.2f}"
     return True, f"validated {width}x{height}, {duration:.2f}s, audio/video, thumbnail and captions"
+
+
+
+def split_visual_segments(script, max_segments=4):
+    """Split narration into up to four balanced, source-ordered visual beats."""
+    text = re.sub(r"\s+", " ", script or "").strip()
+    if not text:
+        return ["USA news update"]
+    words = text.split()
+    count = min(max(1, max_segments), len(words))
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    if len(sentences) >= count:
+        groups = [[] for _ in range(count)]
+        for i, sentence in enumerate(sentences):
+            groups[min(count - 1, i * count // len(sentences))].append(sentence)
+        segments = [" ".join(group) for group in groups if group]
+    else:
+        chunk_size = (len(words) + count - 1) // count
+        segments = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+    return segments[:max_segments] or [text]
+
+
+def visual_scene_label(scene_no):
+    """Stable, factual-neutral labels for distinct visual beats."""
+    return {
+        1: "THE CONTEXT",
+        2: "KEY DEVELOPMENT",
+        3: "WHO IS AFFECTED",
+        4: "WHAT HAPPENS NEXT",
+    }.get(int(scene_no), "THE STORY")
