@@ -1502,7 +1502,7 @@ def filter_path(path):
 # =========================================================
 
 def split_script_for_visuals(script, max_segments=5):
-    """Split narration into four balanced, source-ordered visual beats."""
+    """Split narration into five balanced, source-ordered visual beats."""
     from news_quality_gate import split_visual_segments
     return split_visual_segments(script, max_segments)
 
@@ -2016,20 +2016,42 @@ def main():
         if not passes_fast_clear_reliable_gate(entry, headline, link, summary):
             continue
 
-        # Validate source-grounded narration BEFORE spending limited AI image quota.
-        script = make_rss_only_script(headline, summary)
-        used_rss_fallback = True
-        minimum_words = 28
+        # ORIGINALITY GATE: generate a fresh explainer, not a read-out of RSS copy.
+        # The free/limited Gemini route is optional; if unavailable, fail closed and skip.
+        prompt = f"""
+You are the editorial writer for Digital Orbit, a concise US news explainer channel.
+Write an ORIGINAL spoken script for a 25-40 second YouTube Short (45-75 words).
+Use ONLY facts explicitly supported by the source material below. Do not add outside
+facts, predictions, invented consequences, quotes, motives, or numbers.
 
-        if (
-            not script
-            or "SKIP_STORY" in script.upper()
-            or len(script.split()) < minimum_words
-        ):
+Structure:
+1) Open with a specific, curiosity-building hook tied to the reported development.
+2) Explain what happened in clear, natural spoken English.
+3) Explain why it matters ONLY if the source gives enough information; otherwise say
+   what is still unknown or what confirmed next step the source reports.
+4) End with a useful takeaway, not a generic engagement-bait question.
 
-            print("Story skipped: insufficient safe script content:", headline)
+Do not copy sentences from the source. Paraphrase naturally and add clear explanation
+without changing the facts. Avoid "breaking news" filler, "you won't believe", "what do
+you think", greetings, channel plugs, and unsupported claims. Return narration only.
+If the source does not support a useful original explainer, return exactly SKIP_STORY.
 
+HEADLINE:
+{headline}
+
+SOURCE URL:
+{link}
+
+PUBLISHER MATERIAL:
+{summary[:9000]}
+"""
+        script = generate_script(keys, prompt)
+        from news_quality_gate import validate_original_narration
+        originality_ok, originality_reason = validate_original_narration(script, summary)
+        if not originality_ok:
+            print("ORIGINALITY / VIEWER-VALUE GATE FAILED:", headline, "|", originality_reason)
             continue
+        print("ORIGINAL EXPLAINER GATE PASSED:", headline, "|", originality_reason)
 
         # Generate visuals only for stories that passed factual/script checks.
         next_index = video_count + 1
@@ -2083,7 +2105,10 @@ def main():
                         video_path=VIDEO_DIR / f"news_{next_index:02}.mp4",
                         headline=headline,
                         source_url=link,
-                        index=video_count
+                        index=video_count,
+                        contains_synthetic_media=any(
+                            VIDEO_DIR.glob(f"ai_visual_{next_index:02}_*.jpg")
+                        )
                     )
                     print("YOUTUBE UPLOAD SUCCESS:", youtube_result)
                 except Exception as upload_error:
