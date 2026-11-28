@@ -1501,7 +1501,7 @@ def filter_path(path):
 # STORY VISUALS AND SHORTS COVER
 # =========================================================
 
-def split_script_for_visuals(script, max_segments=4):
+def split_script_for_visuals(script, max_segments=5):
     """Split narration into four balanced, source-ordered visual beats."""
     from news_quality_gate import split_visual_segments
     return split_visual_segments(script, max_segments)
@@ -1619,7 +1619,7 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
     if fallback_image and Path(fallback_image).exists():
         visuals.append(Path(fallback_image))
 
-    segments = split_script_for_visuals(script, 4)
+    segments = split_script_for_visuals(script, 5)
     for visual_no, segment in enumerate(segments, 1):
         image_path = None
 
@@ -1667,9 +1667,9 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
 
     # Guarantee at least four visually distinct scenes even when image providers
     # return one repeated stock image or fall back to the same category artwork.
-    if len(unique) < 4:
-        for scene_no in range(1, 5):
-            if len(unique) >= 4:
+    if len(unique) < 5:
+        for scene_no in range(1, 6):
+            if len(unique) >= 5:
                 break
             try:
                 scene_path = create_story_illustration(
@@ -1752,8 +1752,11 @@ def make_video(headline, script, index, news_image=None, summary=""):
 
     ass = filter_path(ass_path)
     video_filter = (
-        "fps=25,scale=1080:1920:force_original_aspect_ratio=increase,"
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
         "crop=1080:1920,setsar=1,"
+        "zoompan=z='1+0.035*(0.5-0.5*cos(PI*on/100))':"
+        "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        "d=1:s=1080x1920:fps=25,"
         "eq=contrast=1.045:saturation=1.08:brightness=-0.008,"
         "unsharp=5:5:0.35:3:3:0.15,vignette=PI/5,"
         f"ass=filename='{ass}':fontsdir='/usr/share/fonts/truetype/dejavu',"
