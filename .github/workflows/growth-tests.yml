@@ -8,6 +8,8 @@ on:
       - "main.py"
       - "growth_automation.py"
       - "growth_quality.py"
+      - "news_quality_gate.py"
+      - ".github/workflows/news.yml"
       - "tests/**"
       - ".github/workflows/growth-tests.yml"
 
@@ -33,7 +35,7 @@ jobs:
 
       - name: Compile Python files
         run: |
-          python -m py_compile main.py youtube_upload.py scheduling.py growth_automation.py growth_quality.py tests/test_growth_system.py tests/test_adaptive_scheduling.py tests/test_growth_quality.py
+          python -m py_compile main.py youtube_upload.py scheduling.py growth_automation.py growth_quality.py news_quality_gate.py tests/test_news_quality_gate.py tests/test_growth_system.py tests/test_adaptive_scheduling.py tests/test_growth_quality.py
 
       - name: Run offline editorial tests
         env:
