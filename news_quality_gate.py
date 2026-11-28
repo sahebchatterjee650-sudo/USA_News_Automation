@@ -111,13 +111,13 @@ def validate_rendered_assets(video_path, thumbnail_path, captions_path):
 
 def validate_original_narration(script, source_text, min_words=40, max_words=85):
     """Reject empty, thin, generic, or near-verbatim narration before rendering."""
-    text = re.sub(r"\\s+", " ", (script or "")).strip()
+    text = re.sub(r"\s+", " ", (script or "")).strip()
     words = re.findall(r"[A-Za-z0-9']+", text)
     if not text or text.upper() == "SKIP_STORY":
         return False, "model declined or returned no narration"
     if not min_words <= len(words) <= max_words:
         return False, f"narration length outside {min_words}-{max_words} words: {len(words)}"
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\\s+", text) if part.strip()]
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
     if len(sentences) < 3:
         return False, "explainer needs at least three clear spoken beats"
     lowered = text.lower()
@@ -127,7 +127,7 @@ def validate_original_narration(script, source_text, min_words=40, max_words=85)
     )):
         return False, "generic engagement or filler phrase detected"
 
-    source = re.sub(r"\\s+", " ", (source_text or "")).strip().lower()
+    source = re.sub(r"\s+", " ", (source_text or "")).strip().lower()
     script_lower = text.lower()
     def ngrams(value, size=5):
         tokens = re.findall(r"[a-z0-9']+", value)
