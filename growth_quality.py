@@ -4,7 +4,7 @@ import re
 RULES = [
     ("weather", ["weather", "storm", "hurricane", "flood", "rain", "snow", "heat", "power outage"], "আবহাওয়া ও প্রাকৃতিক পরিস্থিতি নিয়ে", "weather and its reported impact on communities"),
     ("geopolitics", ["ukraine", "russia", "zelensky", "putin", "iran", "israel", "gaza", "military", "warship", "drone attack", "nato"], "আন্তর্জাতিক সংঘাত ও ভূরাজনীতি নিয়ে", "international conflict, diplomacy and reported developments"),
-    ("politics", ["trump", "biden", "white house", "congress", "senate", "democrat", "republican", "election", "campaign", "president", "governor", "political", "politics", "vance"], "মার্কিন রাজনীতি ও সরকারি সিদ্ধান্ত নিয়ে", "US politics, public officials and government decisions"),
+    ("politics", ["trump", "biden", "white house", "congress", "senate", "democrat", "democrats", "republican", "republicans", "election", "campaign", "president", "governor", "political", "politics", "vance"], "মার্কিন রাজনীতি ও সরকারি সিদ্ধান্ত নিয়ে", "US politics, public officials and government decisions"),
     ("law", ["judge", "court", "lawsuit", "ruling", "ban", "legal", "indictment", "investigation", "prosecutor"], "আদালত ও আইনি সিদ্ধান্ত নিয়ে", "a court action, legal decision or investigation"),
     ("technology", ["technology", "tech", "artificial intelligence", " ai ", "cyber", "hacker", "data center", "nvidia", "software"], "প্রযুক্তি ও সাইবার নিরাপত্তা নিয়ে", "technology, cybersecurity and practical implications"),
     ("business", ["business", "economy", "market", "stock", "jobs", "inflation", "prices", "retail", "shopping", "black friday"], "ব্যবসা ও অর্থনীতির সাম্প্রতিক পরিবর্তন নিয়ে", "business, markets and consumer or worker impact"),
