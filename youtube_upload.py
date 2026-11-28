@@ -169,7 +169,7 @@ def first_future_publish_time():
     return selected
 
 
-def upload_video(video_path, headline, source_url="", index=0):
+def upload_video(video_path, headline, source_url="", index=0, contains_synthetic_media=False):
     global _first_publish_time
     path = Path(video_path)
     if not path.exists() or path.stat().st_size < 100_000:
@@ -223,8 +223,8 @@ def upload_video(video_path, headline, source_url="", index=0):
 
     description = (
         f"{title}\n\n"
-        "A concise, source-based news briefing: the key development, the facts reported so far, "
-        "and why it matters. Watch to the end, then share your view respectfully.\n\n"
+        "A concise, source-based news briefing with clear context and why it matters. "
+        "Subscribe to Digital Orbit for clear, useful US news explainers.\n\n"
         + (f"Original reporting / source: {source_url}\n\n" if source_url else "")
         + "Follow Digital Orbit for clear, concise US and world news updates.\n"
         + " ".join(["#Shorts", "#USNews"] + topic_hashtags)
@@ -244,7 +244,8 @@ def upload_video(video_path, headline, source_url="", index=0):
         "status": {
             "privacyStatus": "private",
             "publishAt": publish_at.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
-            "selfDeclaredMadeForKids": False
+            "selfDeclaredMadeForKids": False,
+            "containsSyntheticMedia": bool(contains_synthetic_media)
         }
     }
 

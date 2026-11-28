@@ -44,6 +44,9 @@ RSS_FEEDS = [
     ("NBC News", "https://feeds.nbcnews.com/nbcnews/public/news"),
     ("AP via Google News", "https://news.google.com/rss/search?q=when:24h+site:apnews.com&hl=en-US&gl=US&ceid=US:en"),
     ("Reuters via Google News", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&hl=en-US&gl=US&ceid=US:en"),
+    # Official US labor-market sources: government announcements and measured employment data.
+    ("US Department of Labor", "https://www.dol.gov/rss/releases.xml"),
+    ("US Bureau of Labor Statistics", "https://www.bls.gov/feed/bls_latest.rss"),
 ]
 
 # Corrected Gemini model
@@ -1063,6 +1066,38 @@ def create_story_illustration(headline, summary, index):
         for x, y in [(300,550),(420,465),(535,500),(690,370),(850,420)]:
             draw.ellipse((x-13,y-13,x+13,y+13), fill=(255,205,75))
 
+    # Each fallback scene gets a different visual beat, not a repeated category card.
+    from news_quality_gate import visual_scene_label
+    scene_no = int(index) % 10
+    if scene_no == 0:
+        scene_no = 1
+    scene_no = ((scene_no - 1) % 5) + 1
+    draw.rounded_rectangle((85, 535, 1115, 675), radius=24,
+                           fill=(5, 18, 38), outline=(55, 190, 230), width=5)
+    draw.text((120, 555), visual_scene_label(scene_no),
+              font=get_font(34, True), fill=(75, 210, 245))
+    if scene_no == 1:
+        draw.line((180, 635, 980, 635), fill=(205, 225, 240), width=7)
+        for x in (240, 500, 760, 960):
+            draw.ellipse((x-17, 618, x+17, 652), fill=(255, 195, 65))
+    elif scene_no == 2:
+        for x, height in zip((250, 430, 610, 790), (38, 65, 88, 52)):
+            draw.rounded_rectangle((x, 650-height, x+90, 650), radius=10,
+                                   fill=(50, 185, 225))
+    elif scene_no == 3:
+        for x in (330, 600, 870):
+            draw.ellipse((x-22, 600, x+22, 644), fill=(225, 235, 245))
+            draw.rounded_rectangle((x-42, 638, x+42, 665), radius=12,
+                                   fill=(45, 130, 175))
+    else:
+        for x in (250, 520, 790):
+            draw.rounded_rectangle((x, 610, x+150, 655), radius=12,
+                                   fill=(24, 75, 115), outline=(75, 205, 240), width=3)
+        draw.line((400, 632, 510, 632), fill=(255, 195, 65), width=8)
+        draw.polygon([(510, 620), (530, 632), (510, 644)], fill=(255, 195, 65))
+        draw.line((670, 632, 780, 632), fill=(255, 195, 65), width=8)
+        draw.polygon([(780, 620), (800, 632), (780, 644)], fill=(255, 195, 65))
+
     draw.rounded_rectangle((85, 90, 620, 160), radius=16, fill=(185, 25, 43))
     draw.text((115, 105), label, font=get_font(32, True), fill="white")
     draw.text((90, 690), "EDITORIAL ILLUSTRATION • DIGITAL ORBIT",
@@ -1469,36 +1504,10 @@ def filter_path(path):
 # STORY VISUALS AND SHORTS COVER
 # =========================================================
 
-def split_script_for_visuals(script, max_segments=3):
-    """Split narration into multiple balanced visual beats, even if RSS fallback has few sentences."""
-    text = re.sub(r"\s+", " ", script or "").strip()
-    if not text:
-        return ["USA news update"]
-
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]
-    # Prefer sentence boundaries, but RSS fallback sometimes supplies one long sentence.
-    if len(sentences) >= 2:
-        count = min(max_segments, len(sentences))
-        groups = [[] for _ in range(count)]
-        for i, sentence in enumerate(sentences):
-            groups[min(count - 1, i * count // len(sentences))].append(sentence)
-        segments = [" ".join(group) for group in groups if group]
-    else:
-        words = text.split()
-        count = min(max_segments, max(1, (len(words) + 11) // 12))
-        chunk_size = max(1, (len(words) + count - 1) // count)
-        segments = [" ".join(words[i:i + chunk_size])
-                    for i in range(0, len(words), chunk_size)]
-
-    # For normal 15–60 second Shorts, aim for at least three scene beats.
-    words = text.split()
-    if len(segments) < 3 and len(words) >= 18:
-        count = min(max_segments, 3)
-        chunk_size = max(1, (len(words) + count - 1) // count)
-        segments = [" ".join(words[i:i + chunk_size])
-                    for i in range(0, len(words), chunk_size)]
-    return segments[:max_segments] or [text]
-
+def split_script_for_visuals(script, max_segments=5):
+    """Split narration into five balanced, source-ordered visual beats."""
+    from news_quality_gate import split_visual_segments
+    return split_visual_segments(script, max_segments)
 
 def download_visual_for_segment(headline, segment, index, visual_no):
     global OPENVERSE_RATE_LIMITED
@@ -1613,7 +1622,7 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
     if fallback_image and Path(fallback_image).exists():
         visuals.append(Path(fallback_image))
 
-    segments = split_script_for_visuals(script, 3)
+    segments = split_script_for_visuals(script, 5)
     for visual_no, segment in enumerate(segments, 1):
         image_path = None
 
@@ -1658,6 +1667,23 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
         if digest not in hashes:
             hashes.add(digest)
             unique.append(path)
+
+    # Guarantee at least four visually distinct scenes even when image providers
+    # return one repeated stock image or fall back to the same category artwork.
+    if len(unique) < 5:
+        for scene_no in range(1, 6):
+            if len(unique) >= 5:
+                break
+            try:
+                scene_path = create_story_illustration(
+                    headline, f"{summary} {scene_no}", index * 10 + scene_no
+                )
+                digest = hashlib.md5(Path(scene_path).read_bytes()).hexdigest()
+                if digest not in hashes:
+                    hashes.add(digest)
+                    unique.append(Path(scene_path))
+            except Exception as error:
+                print("Distinct scene fallback failed:", str(error)[:160])
 
     print("Hybrid visual scenes prepared:", len(unique))
     print("Licensed photo attributions collected:", len(IMAGE_ATTRIBUTIONS))
@@ -1729,8 +1755,11 @@ def make_video(headline, script, index, news_image=None, summary=""):
 
     ass = filter_path(ass_path)
     video_filter = (
-        "fps=25,scale=1080:1920:force_original_aspect_ratio=increase,"
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
         "crop=1080:1920,setsar=1,"
+        "zoompan=z='1+0.035*(0.5-0.5*cos(PI*on/100))':"
+        "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        "d=1:s=1080x1920:fps=25,"
         "eq=contrast=1.045:saturation=1.08:brightness=-0.008,"
         "unsharp=5:5:0.35:3:3:0.15,vignette=PI/5,"
         f"ass=filename='{ass}':fontsdir='/usr/share/fonts/truetype/dejavu',"
@@ -1990,20 +2019,53 @@ def main():
         if not passes_fast_clear_reliable_gate(entry, headline, link, summary):
             continue
 
-        # Validate source-grounded narration BEFORE spending limited AI image quota.
-        script = make_rss_only_script(headline, summary)
-        used_rss_fallback = True
-        minimum_words = 28
+        # ORIGINALITY GATE: generate a fresh explainer, not a read-out of RSS copy.
+        # The free/limited Gemini route is optional; if unavailable, fail closed and skip.
+        prompt = f"""
+You are the editorial writer for Digital Orbit, a concise US news explainer channel.
+Write an ORIGINAL spoken script for a 25-40 second YouTube Short (45-75 words).
+Use ONLY facts explicitly supported by the source material below. Do not add outside
+facts, predictions, invented consequences, quotes, motives, or numbers.
 
-        if (
-            not script
-            or "SKIP_STORY" in script.upper()
-            or len(script.split()) < minimum_words
-        ):
+Structure:
+1) Open with a specific, curiosity-building hook tied to the reported development.
+2) Explain what happened in clear, natural spoken English.
+3) Explain why it matters ONLY if the source gives enough information; otherwise say
+   what is still unknown or what confirmed next step the source reports.
+4) After the core explanation (not in the opening hook), include ONE brief, natural
+   channel-subscription invitation. Tie it to the value of future explainers, for example:
+   "For clear updates that explain what this means for you, subscribe to Digital Orbit."
+   Rephrase naturally when appropriate. Never repeat the CTA, interrupt a sensitive story,
+   or make subscription sound required to get important information.
+5) End with a useful takeaway, not a generic engagement-bait question.
 
-            print("Story skipped: insufficient safe script content:", headline)
+Do not copy sentences from the source. Paraphrase naturally and add clear explanation
+without changing the facts. Avoid "breaking news" filler, "you won't believe", "what do
+you think", greetings, channel plugs, and unsupported claims. Return narration only.
+If the source does not support a useful original explainer, return exactly SKIP_STORY.
 
+- Never imply that a labor-market statistic is an individual job vacancy or a guaranteed hiring opportunity.
+- For job listings, verify the employer, role, location, application deadline, and official application URL from the original employer or government careers page.
+- Distinguish official federal/state/local job announcements, private-employer hiring, layoffs, unemployment claims, payroll employment, unemployment rate, wages, and job openings.
+- When reporting BLS figures, state the reference month/period and release date; do not describe a past reporting period as today's live job count.
+- Do not claim that a role is still open unless its official listing is checked and the deadline/status is current.
+
+HEADLINE:
+{headline}
+
+SOURCE URL:
+{link}
+
+PUBLISHER MATERIAL:
+{summary[:9000]}
+"""
+        script = generate_script(keys, prompt)
+        from news_quality_gate import validate_original_narration
+        originality_ok, originality_reason = validate_original_narration(script, summary)
+        if not originality_ok:
+            print("ORIGINALITY / VIEWER-VALUE GATE FAILED:", headline, "|", originality_reason)
             continue
+        print("ORIGINAL EXPLAINER GATE PASSED:", headline, "|", originality_reason)
 
         # Generate visuals only for stories that passed factual/script checks.
         next_index = video_count + 1
@@ -2057,7 +2119,10 @@ def main():
                         video_path=VIDEO_DIR / f"news_{next_index:02}.mp4",
                         headline=headline,
                         source_url=link,
-                        index=video_count
+                        index=video_count,
+                        contains_synthetic_media=any(
+                            VIDEO_DIR.glob(f"ai_visual_{next_index:02}_*.jpg")
+                        )
                     )
                     print("YOUTUBE UPLOAD SUCCESS:", youtube_result)
                 except Exception as upload_error:

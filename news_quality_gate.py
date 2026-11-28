@@ -106,3 +106,73 @@ def validate_rendered_assets(video_path, thumbnail_path, captions_path):
     if not 12 <= duration <= 60:
         return False, f"video duration outside 12-60 seconds: {duration:.2f}"
     return True, f"validated {width}x{height}, {duration:.2f}s, audio/video, thumbnail and captions"
+
+
+
+def validate_original_narration(script, source_text, min_words=40, max_words=85):
+    """Reject empty, thin, generic, or near-verbatim narration before rendering."""
+    text = re.sub(r"\s+", " ", (script or "")).strip()
+    words = re.findall(r"[A-Za-z0-9']+", text)
+    if not text or text.upper() == "SKIP_STORY":
+        return False, "model declined or returned no narration"
+    if not min_words <= len(words) <= max_words:
+        return False, f"narration length outside {min_words}-{max_words} words: {len(words)}"
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    if len(sentences) < 3:
+        return False, "explainer needs at least three clear spoken beats"
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in (
+        "what do you think", "like and subscribe", "you won't believe",
+        "you will not believe", "welcome back", "breaking news"
+    )):
+        return False, "generic engagement or filler phrase detected"
+
+    source = re.sub(r"\s+", " ", (source_text or "")).strip().lower()
+    script_lower = text.lower()
+    def ngrams(value, size=5):
+        tokens = re.findall(r"[a-z0-9']+", value)
+        return {" ".join(tokens[i:i + size]) for i in range(max(0, len(tokens) - size + 1))}
+    script_grams = ngrams(script_lower)
+    source_grams = ngrams(source)
+    if not script_grams:
+        return False, "not enough narration text to compare with source"
+    copied_ratio = len(script_grams & source_grams) / len(script_grams)
+    if copied_ratio > 0.55:
+        return False, f"too close to publisher wording: {copied_ratio:.0%} matching five-word phrases"
+
+    source_tokens = set(re.findall(r"[a-z0-9]{3,}", source))
+    script_tokens = set(re.findall(r"[a-z0-9]{3,}", script_lower))
+    grounding = len(source_tokens & script_tokens) / max(1, len(script_tokens))
+    if grounding < 0.12:
+        return False, "too few source-linked terms; factual grounding is unclear"
+    return True, f"{len(words)} words, {len(sentences)} sentences, {copied_ratio:.0%} five-word phrase overlap"
+
+
+def split_visual_segments(script, max_segments=5):
+    """Split narration into up to five balanced, source-ordered visual beats."""
+    text = re.sub(r"\s+", " ", script or "").strip()
+    if not text:
+        return ["USA news update"]
+    words = text.split()
+    count = min(max(1, max_segments), len(words))
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    if len(sentences) >= count:
+        groups = [[] for _ in range(count)]
+        for i, sentence in enumerate(sentences):
+            groups[min(count - 1, i * count // len(sentences))].append(sentence)
+        segments = [" ".join(group) for group in groups if group]
+    else:
+        chunk_size = (len(words) + count - 1) // count
+        segments = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+    return segments[:max_segments] or [text]
+
+
+def visual_scene_label(scene_no):
+    """Stable, factual-neutral labels for five distinct visual beats."""
+    return {
+        1: "THE CONTEXT",
+        2: "KEY DEVELOPMENT",
+        3: "WHO IS AFFECTED",
+        4: "WHAT HAPPENS NEXT",
+        5: "THE LATEST UPDATE",
+    }.get(int(scene_no), "THE STORY")
