@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 CATEGORY_RULES = [
-    ("WEATHER & CLIMATE", ("thanksgiving storm", "storm", "hurricane", "weather", "flood", "rain", "snow", "heat wave", "tornado", "climate")),
+    ("WEATHER & CLIMATE", ("thanksgiving storm", "storm", "storms", "hurricane", "weather", "flood", "flooding", "rain", "snow", "heat wave", "tornado", "climate")),
     ("BUSINESS & ECONOMY", ("black friday", "cyber monday", "discount", "discounts", "shopping", "retail", "consumer", "price", "prices", "sale", "sales", "market", "stock", "economy", "inflation", "jobs", "company", "business", "earnings", "tariff")),
     ("US POLITICS", ("election", "midterm", "president", "trump", "biden", "congress", "senate", "democrat", "republican", "governor", "white house", "campaign", "ballot", "voting", "politics")),
     ("LAW & COURTS", ("judge", "court", "lawsuit", "ruling", "supreme court", "legal", "indictment", "prosecutor", "sentencing", "appeal")),
