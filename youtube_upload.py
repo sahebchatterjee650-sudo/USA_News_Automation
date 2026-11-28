@@ -169,7 +169,7 @@ def first_future_publish_time():
     return selected
 
 
-def upload_video(video_path, headline, source_url="", index=0):
+def upload_video(video_path, headline, source_url="", index=0, contains_synthetic_media=False):
     global _first_publish_time
     path = Path(video_path)
     if not path.exists() or path.stat().st_size < 100_000:
@@ -244,7 +244,8 @@ def upload_video(video_path, headline, source_url="", index=0):
         "status": {
             "privacyStatus": "private",
             "publishAt": publish_at.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
-            "selfDeclaredMadeForKids": False
+            "selfDeclaredMadeForKids": False,
+            "containsSyntheticMedia": bool(contains_synthetic_media)
         }
     }
 
