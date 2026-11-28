@@ -9,7 +9,7 @@ from long_video_upload import upload_long_video_private
 
 OUT=Path("long_form_output"); OUT.mkdir(exist_ok=True)
 W,H=1920,1080
-MIN_WORDS,MAX_WORDS=520,850
+MIN_WORDS,MAX_WORDS=520,730
 VOICE=os.getenv("LONG_VIDEO_VOICE","en-US-AndrewNeural")
 
 def clean(s):
@@ -97,7 +97,7 @@ def subtitles(script,duration,path):
 def render(cards,audio,script,out):
     probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(audio)],capture_output=True,text=True,check=True,timeout=30)
     duration=float(probe.stdout.strip())
-    if not 240<=duration<=420: raise RuntimeError(f"Audio duration {duration:.1f}s outside 4–7 minute safety range.")
+    if not 240<=duration<=360: raise RuntimeError(f"Audio duration {duration:.1f}s outside 4–6 minute target.")
     srt=OUT/"captions.srt"; subtitles(script,duration,srt)
     concat=OUT/"scenes.txt"; per=duration/len(cards)
     concat.write_text("".join(f"file '{p.resolve()}'\nduration {per:.4f}\n" for p in cards)+f"file '{cards[-1].resolve()}'\n",encoding="utf-8")
@@ -114,7 +114,7 @@ def validate(path):
     duration=float(data.get("format",{}).get("duration",0))
     if not v or not a or int(v["width"])<=int(v["height"]): raise RuntimeError("Need landscape video and audio streams.")
     if abs(int(v["width"])/int(v["height"])-16/9)>0.02: raise RuntimeError("Video is not 16:9.")
-    if not 240<=duration<=420 or path.stat().st_size<500000: raise RuntimeError("Rendered video failed duration/size gate.")
+    if not 240<=duration<=360 or path.stat().st_size<500000: raise RuntimeError("Rendered video failed duration/size gate.")
     return duration
 
 def main():
