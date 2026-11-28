@@ -50,7 +50,7 @@ class NewsQualityGateTests(unittest.TestCase):
             "service on three routes next month. The agency said riders can expect "
             "shorter waits during peak travel hours. Public comments remain open."
         )
-        ok, reason = validate_original_narration(copied, source)
+        ok, reason = validate_original_narration(copied, source, min_words=20)
         self.assertFalse(ok)
         self.assertIn("publisher wording", reason)
 
