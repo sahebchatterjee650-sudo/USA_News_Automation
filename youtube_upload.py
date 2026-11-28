@@ -90,17 +90,83 @@ def get_recent_video_titles(max_pages=10):
     return titles
 
 def first_future_publish_time():
-    now = datetime.now(ET)
-    # Three daily US Eastern release windows. If today's slot has passed,
-    # choose the next future slot; never send a past publishAt value.
-    slots = [(9, 0), (13, 0), (17, 0)]
-    for day_offset in range(0, 3):
-        day = (now + timedelta(days=day_offset)).date()
-        for hour, minute in slots:
-            candidate = datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET)
-            if candidate >= now + timedelta(minutes=10):
-                return candidate
-    raise RuntimeError("Could not calculate a future YouTube publication time.")
+    """Choose an adaptive release slot between 08:00 and 22:00 US Eastern."""
+    from scheduling import choose_adaptive_slot
+
+    youtube = get_youtube_service()
+    hourly_stats = {}
+    reserved_times = []
+    try:
+        channel_response = youtube.channels().list(
+            part="contentDetails", mine=True
+        ).execute()
+        channel_items = channel_response.get("items", [])
+        if not channel_items:
+            raise RuntimeError("Could not identify the authorized YouTube channel.")
+        playlist_id = channel_items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+        page_token = None
+        video_ids = []
+        for _ in range(2):
+            page = youtube.playlistItems().list(
+                part="contentDetails", playlistId=playlist_id,
+                maxResults=50, pageToken=page_token
+            ).execute()
+            video_ids.extend(
+                item.get("contentDetails", {}).get("videoId")
+                for item in page.get("items", [])
+            )
+            page_token = page.get("nextPageToken")
+            if not page_token:
+                break
+
+        now = datetime.now(ET)
+        cutoff = now - timedelta(days=30)
+        for start in range(0, len([x for x in video_ids if x]), 50):
+            ids = [x for x in video_ids if x][start:start + 50]
+            if not ids:
+                continue
+            details = youtube.videos().list(
+                part="snippet,statistics,status", id=",".join(ids)
+            ).execute()
+            for video in details.get("items", []):
+                status = video.get("status", {})
+                scheduled = status.get("publishAt")
+                if scheduled:
+                    reserved_times.append(scheduled)
+
+                published = video.get("snippet", {}).get("publishedAt")
+                if not published:
+                    continue
+                published_at = datetime.fromisoformat(
+                    published.replace("Z", "+00:00")
+                ).astimezone(ET)
+                if published_at < cutoff or published_at > now:
+                    continue
+                hour = published_at.hour
+                stats = hourly_stats.setdefault(hour, {"count": 0, "views": 0})
+                stats["count"] += 1
+                stats["views"] += int(
+                    video.get("statistics", {}).get("viewCount", 0)
+                )
+    except Exception as exc:
+        # Analytics/history is an optimization, not a reason to block publishing.
+        # The pure selector still explores valid ET slots when history is unavailable.
+        print("ADAPTIVE ANALYTICS WARNING: using exploration fallback:", str(exc)[:250])
+        hourly_stats = {}
+
+    selected, details = choose_adaptive_slot(
+        datetime.now(ET), hourly_stats, reserved_times
+    )
+    print(
+        "ADAPTIVE PUBLISH SLOT:",
+        selected.isoformat(),
+        "| strategy:", details["strategy"],
+        "| samples:", details["hour_samples"],
+        "| avg views:", details["hour_average_views"],
+        "| available candidates:", details["candidate_count"],
+    )
+    return selected
 
 
 def upload_video(video_path, headline, source_url="", index=0):
