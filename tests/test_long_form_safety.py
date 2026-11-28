@@ -15,7 +15,7 @@ class LongFormSafetyTests(unittest.TestCase):
     def test_landscape_duration_and_word_guards(self):
         s=Path("long_form.py").read_text(encoding="utf-8")
         self.assertIn("16/9",s)
-        self.assertIn("240<=duration<=420",s)
-        self.assertIn("MIN_WORDS,MAX_WORDS=520,850",s)
+        self.assertIn("240<=duration<=360",s)
+        self.assertIn("MIN_WORDS,MAX_WORDS=520,730",s)
 
 if __name__=="__main__": unittest.main()
