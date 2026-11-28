@@ -38,6 +38,19 @@ class NewsQualityGateTests(unittest.TestCase):
         self.assertEqual(len(segments), 5)
         self.assertTrue(all(segments))
 
+    def test_labor_market_reporting_requires_period_and_source_context_in_prompt(self):
+        from pathlib import Path
+        source = Path("main.py").read_text(encoding="utf-8")
+        self.assertIn("reference month/period and release date", source)
+        self.assertIn("individual job vacancy", source)
+        self.assertIn("official application URL", source)
+
+    def test_subscription_invitation_is_one_natural_mid_script_cta(self):
+        from pathlib import Path
+        source = Path("main.py").read_text(encoding="utf-8")
+        self.assertIn("include ONE brief, natural", source)
+        self.assertIn("After the core explanation (not in the opening hook)", source)
+
     def test_original_narration_rejects_verbatim_source_copy(self):
         from news_quality_gate import validate_original_narration
         source = (
