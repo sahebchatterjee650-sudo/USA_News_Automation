@@ -1131,23 +1131,40 @@ def get_category_accent(category):
 
 
 def draw_wrapped_text(draw, text, font, max_width, max_lines=4):
+    """Wrap headline text without allowing a single long token to clip the cover."""
     words = (text or "").upper().split()
     lines, current = [], ""
-    for word in words:
-        candidate = (current + " " + word).strip()
-        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
-            current = candidate
-        else:
-            if current:
-                lines.append(current)
-            current = word
+
+    def split_oversized_word(word):
+        parts = []
+        remaining = word
+        while remaining and draw.textbbox((0, 0), remaining, font=font)[2] > max_width:
+            cut = len(remaining)
+            while cut > 1 and draw.textbbox((0, 0), remaining[:cut], font=font)[2] > max_width:
+                cut -= 1
+            parts.append(remaining[:cut])
+            remaining = remaining[cut:]
+        if remaining:
+            parts.append(remaining)
+        return parts
+
+    for original in words:
+        for word in split_oversized_word(original):
+            candidate = (current + " " + word).strip()
+            if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
     if current:
         lines.append(current)
+
     if len(lines) > max_lines:
         lines = lines[:max_lines]
         last = lines[-1]
         while last and draw.textbbox((0, 0), last + "...", font=font)[2] > max_width:
-            last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+            last = last[:-1]
         lines[-1] = last.rstrip(" ,.-") + "..."
     return lines
 
@@ -1220,14 +1237,22 @@ def create_background(headline, index, news_image=None, output_path=None):
     draw.rounded_rectangle((60, 930, 1020, 1255), radius=24,
                            fill=(3, 11, 25), outline=accent, width=3)
     draw.rectangle((60, 930, 1020, 943), fill=accent)
+    # Fit the complete headline to the visible panel instead of relying on a
+    # fixed font size that can clip unusually long names or multi-part headlines.
     title_font = get_font(48, True)
     lines = draw_wrapped_text(draw, headline, title_font, 870, 4)
-    if len(lines) > 3:
-        title_font = get_font(42, True)
+    for size in (46, 44, 42, 40, 38, 36, 34):
+        line_height = int(size * 1.32)
+        if len(lines) * line_height <= 260:
+            break
+        title_font = get_font(size, True)
         lines = draw_wrapped_text(draw, headline, title_font, 870, 4)
-    line_gap = 65 if title_font.size >= 48 else 57
-    y = 980
+    line_gap = int(title_font.size * 1.32)
+    y = 960
     for line in lines:
+        box = draw.textbbox((0, 0), line, font=title_font)
+        if box[2] > 870:
+            raise RuntimeError("Thumbnail headline exceeds safe text width.")
         draw.text((95, y), line, font=title_font,
                   fill=(250, 252, 255))
         y += line_gap
