@@ -223,8 +223,8 @@ def upload_video(video_path, headline, source_url="", index=0, contains_syntheti
 
     description = (
         f"{title}\n\n"
-        "A concise, source-based news briefing: the key development, the facts reported so far, "
-        "and why it matters. Watch to the end, then share your view respectfully.\n\n"
+        "A concise, source-based news briefing with clear context and why it matters. "
+        "Subscribe to Digital Orbit for clear, useful US news explainers.\n\n"
         + (f"Original reporting / source: {source_url}\n\n" if source_url else "")
         + "Follow Digital Orbit for clear, concise US and world news updates.\n"
         + " ".join(["#Shorts", "#USNews"] + topic_hashtags)
