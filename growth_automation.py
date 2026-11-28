@@ -70,11 +70,9 @@ def clean_text(value):
     return re.sub(r"\s+", " ", value).strip()
 
 def topic_for(title, description=""):
-    text = (" " + clean_text(title + " " + description).lower() + " ")
-    for keywords, bn, en in TOPIC_MAP:
-        if any(k in text for k in keywords):
-            return bn, en
-    return "যুক্তরাষ্ট্রের সাম্প্রতিক সাধারণ খবর নিয়ে", "a general US news update; check the linked source for the full details"
+    from growth_quality import classify_topic
+    _, bn, en = classify_topic(clean_text(title), clean_text(description))
+    return bn, en
 
 def safe_topic(title, description=""):
     text = clean_text(title + " " + description).lower()
@@ -85,19 +83,9 @@ def safe_topic(title, description=""):
     return len(title_clean.split()) >= 4 and not title_clean.startswith("#")
 
 def make_comment(title, description):
-    bn, en = topic_for(title, description)
-    text = (title + " " + description).lower()
-    if any(x in text for x in ["weather", "storm", "hurricane", "flood", "rain", "snow"]):
-        return ("Thanks for this weather update. Clear, practical information can help people plan ahead and stay informed.")
-    if any(x in text for x in ["science", "research", "study", "space", "nasa"]):
-        return ("Thanks for explaining this research update. The context behind new findings is especially helpful for viewers.")
-    if any(x in text for x in ["technology", "tech", "artificial intelligence", "cyber", "data center"]):
-        return ("Thanks for breaking down this technology story. Explaining its real-world impact makes the update easier to understand.")
-    if any(x in text for x in ["business", "economy", "market", "stock", "jobs", "inflation"]):
-        return ("Thanks for this business update. Clear context helps viewers understand the figures and what they may mean.")
-    if any(x in text for x in ["health", "hospital", "medical", "disease", "healthcare"]):
-        return ("Thanks for sharing this health update. Reliable information and clear context are important for the public.")
-    return ("Thanks for this informative report. The clear summary and useful context help viewers understand the key facts.")
+    # Topic-specific discussion prompt; this is a human-review draft, never auto-posted.
+    from growth_quality import discussion_prompt
+    return discussion_prompt(clean_text(title), clean_text(description))
 
 def engagement_research(youtube):
     rows, seen = [], set()
@@ -134,23 +122,14 @@ def engagement_research(youtube):
                     continue
                 seen.add(vid)
                 bn_topic, en_topic = topic_for(title, desc)
-                comment = make_comment(title, desc)
-                bn_comment = {
-                    "Thanks for this weather update. Clear, practical information can help people plan ahead and stay informed.": "এই আবহাওয়ার আপডেটের জন্য ধন্যবাদ। পরিষ্কার ও ব্যবহারিক তথ্য মানুষকে আগে থেকে পরিকল্পনা করতে এবং সচেতন থাকতে সাহায্য করে।",
-                    "Thanks for explaining this research update. The context behind new findings is especially helpful for viewers.": "গবেষণার এই আপডেটটি ব্যাখ্যা করার জন্য ধন্যবাদ। নতুন আবিষ্কারের পেছনের প্রেক্ষাপট দর্শকদের জন্য বিশেষভাবে সহায়ক।",
-                    "Thanks for breaking down this technology story. Explaining its real-world impact makes the update easier to understand.": "প্রযুক্তির এই খবরটি সহজভাবে তুলে ধরার জন্য ধন্যবাদ। বাস্তব জীবনে এর প্রভাব ব্যাখ্যা করায় বিষয়টি বুঝতে সুবিধা হয়।",
-                    "Thanks for this business update. Clear context helps viewers understand the figures and what they may mean.": "ব্যবসা সংক্রান্ত এই আপডেটের জন্য ধন্যবাদ। পরিষ্কার প্রেক্ষাপট দর্শকদের পরিসংখ্যান ও তার সম্ভাব্য অর্থ বুঝতে সাহায্য করে।",
-                    "Thanks for sharing this health update. Reliable information and clear context are important for the public.": "স্বাস্থ্য সংক্রান্ত এই তথ্য শেয়ার করার জন্য ধন্যবাদ। নির্ভরযোগ্য তথ্য ও পরিষ্কার প্রেক্ষাপট জনসাধারণের জন্য গুরুত্বপূর্ণ।",
-                    "Thanks for this informative report. The clear summary and useful context help viewers understand the key facts.": "এই তথ্যবহুল প্রতিবেদনের জন্য ধন্যবাদ। পরিষ্কার সারাংশ ও প্রয়োজনীয় প্রেক্ষাপট দর্শকদের মূল তথ্য বুঝতে সাহায্য করে।",
-                }.get(comment, "এই তথ্যবহুল প্রতিবেদনের জন্য ধন্যবাদ।")
+                discussion = make_comment(title, desc)
                 rows.append(
                     f"### {title}\n"
                     f"- Channel: {channel_name}\n"
                     f"- Link: https://www.youtube.com/watch?v={vid}\n"
                     f"- বাংলা সংক্ষিপ্ত বিবরণ: {title} — {bn_topic}। ইংরেজি শিরোনাম ও ভিডিওর বর্ণনা থেকে বিষয়টি চিহ্নিত করা হয়েছে; এটি পূর্ণাঙ্গ অনুবাদ নয়।\n"
                     f"- English topic note: {en_topic}.\n"
-                    f"- Suggested English comment (draft only): {comment}\n"
-                    f"- Comment-এর বাংলা অর্থ: {bn_comment}\n"
+                    f"- Suggested discussion prompt (human review only; not auto-posted): {discussion}\n"
                 )
         except Exception as exc:
             rows.append(f"### {channel_name}\nSearch unavailable: {str(exc)[:220]}\n")
@@ -202,35 +181,26 @@ def analytics_report(channel, videos):
     for v in sorted(videos, key=lambda x: x.get("snippet", {}).get("publishedAt", ""), reverse=True)[:30]:
         s = v.get("statistics", {})
         lines.append(f"- {v.get('snippet', {}).get('title','Untitled')} | Views: {s.get('viewCount','0')} | Likes: {s.get('likeCount','hidden')} | Comments: {s.get('commentCount','hidden')}")
-    lines += ["", "This is a simple interaction rate, not YouTube's official engagement metric. Audience retention, impressions, viewed-vs-swiped-away and viewer-online hours require YouTube Analytics API authorization (yt-analytics.readonly)."]
+    lines += ["", "Scope note: channel lifetime totals come from the channel resource; recent listed video totals are the sum of the fetched upload playlist window (up to 200 videos), so these figures are not expected to match.", "This is a simple interaction rate, not YouTube's official engagement metric. Audience retention, impressions, viewed-vs-swiped-away and viewer-online hours require YouTube Analytics API authorization (yt-analytics.readonly)."]
     write_report("02_youtube_analytics.md", "YouTube Analytics Report", [("Channel performance", "\n".join(lines))])
 
 def hook_set(title, description=""):
-    bn, _ = topic_for(title, description)
-    text = (title + " " + description).lower()
-    if any(x in text for x in ["weather", "storm", "hurricane", "flood", "rain", "snow"]):
-        return ["Severe weather could change plans for people in this area. Here's the latest.", "What residents need to know about this weather update.", "Here are the key details behind the latest forecast."]
-    if any(x in text for x in ["technology", "tech", "artificial intelligence", " ai ", "cyber"]):
-        return ["A new technology development is raising important questions. Here's what changed.", "This tech update could have a real-world impact. Here are the facts.", "What this latest technology news means, in under a minute."]
-    if any(x in text for x in ["business", "economy", "market", "stock", "jobs", "inflation"]):
-        return ["A new economic development is drawing attention. Here's the key context.", "What this business update could mean for consumers and workers.", "The numbers behind this market update, explained simply."]
-    if any(x in text for x in ["science", "research", "study", "space", "nasa"]):
-        return ["Researchers have shared a new finding. Here's what the evidence says.", "A closer look at the science behind this latest update.", "What this new discovery does—and does not—tell us."]
-    return [f"Here are the key facts about: {title}.", f"What viewers should know about {title}.", f"A quick, fact-focused breakdown of {title}."]
+    from growth_quality import build_hooks_and_titles
+    hooks, _ = build_hooks_and_titles(clean_text(title), clean_text(description))
+    return hooks
 
 def generate_viral_content(videos):
     sections = []
     for v in videos[:20]:
         sn = v.get("snippet", {})
         title = clean_text(sn.get("title", "USA News Update"))
-        hooks = hook_set(title, clean_text(sn.get("description", "")))
+        from growth_quality import build_hooks_and_titles
+        hooks, titles = build_hooks_and_titles(title, clean_text(sn.get("description", "")))
         sections.append(
             f"### Original: {title}\n"
             + "\n".join(f"- Hook {i+1}: {h}" for i, h in enumerate(hooks)) + "\n"
-            + f"- Title option 1: {title[:75]} | Key Facts\n"
-            + f"- Title option 2: What to Know About {title[:65]}\n"
-            + f"- Title option 3: {title[:70]}: The Latest Update\n"
-            + "- বাংলা নোট: এগুলি শিরোনামভিত্তিক খসড়া; ভিডিওর তথ্য যাচাই করে ব্যবহার করুন।\n"
+            + "\n".join(f"- Title option {i+1}: {t}" for i, t in enumerate(titles)) + "\n"
+            + "- বাংলা নোট: শিরোনামগুলি উৎসের শিরোনাম থেকে তৈরি খসড়া; প্রকাশের আগে তথ্য যাচাই করুন।\n"
         )
     write_report("03_viral_hooks_titles.md", "Viral Hook & Title Generator", [("Topic-specific drafts", "\n".join(sections) or "No recent videos found.")])
 
@@ -265,13 +235,13 @@ def publishing_analyzer(videos):
             buckets[key]["count"] += 1
         except Exception:
             pass
-    qualified = [(k, v) for k, v in buckets.items() if v["count"] >= 3]
+    qualified = [(k, v) for k, v in buckets.items() if v["count"] >= 5]
     qualified.sort(key=lambda x: x[1]["views"] / x[1]["count"], reverse=True)
     lines = [f"- {k}: average current views {v['views']//v['count']} across {v['count']} videos" for k, v in qualified[:10]]
     if not lines:
         lines = ["এখনও নির্ভরযোগ্য সময়-সুপারিশের জন্য একই সময়স্লটে অন্তত ৩টি ভিডিওর তথ্য নেই। আরও ডেটা সংগ্রহ করা হবে।"]
     lines.append("প্রকাশের সময় ও Views-এর সম্পর্ক কেবল ঐতিহাসিক পর্যবেক্ষণ; এটি বেশি Views-এর নিশ্চয়তা দেয় না।")
-    write_report("05_publishing_time_analysis.md", "Best Publishing Time Analyzer", [("Only sufficiently sampled time slots", "\n".join(lines))])
+    write_report("05_publishing_time_analysis.md", "Best Publishing Time Analyzer", [("Time slots with at least 5 videos (small samples excluded)", "\n".join(lines))])
 
 def weekly_report(videos):
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
