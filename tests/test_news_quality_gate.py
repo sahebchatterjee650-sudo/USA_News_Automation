@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from news_quality_gate import classify_category, trend_relevance, is_near_duplicate, validate_rendered_assets
+from news_quality_gate import classify_category, trend_relevance, is_near_duplicate, validate_rendered_assets, split_visual_segments, visual_scene_label
 
 
 class NewsQualityGateTests(unittest.TestCase):
@@ -26,6 +26,21 @@ class NewsQualityGateTests(unittest.TestCase):
 
     def test_unrelated_titles_are_not_duplicates(self):
         self.assertFalse(is_near_duplicate("Black Friday shopping deals", "Senate election results"))
+
+
+    def test_script_is_split_into_four_visual_beats(self):
+        script = (
+            "Officials announced the new plan today. The measure follows months of debate. "
+            "Local agencies will begin the first phase next week. Residents will receive updates "
+            "as more details become available."
+        )
+        segments = split_visual_segments(script, 4)
+        self.assertEqual(len(segments), 4)
+        self.assertTrue(all(segments))
+
+    def test_visual_scene_cards_are_distinct(self):
+        labels = [visual_scene_label(i) for i in range(1, 5)]
+        self.assertEqual(len(set(labels)), 4)
 
     def test_missing_rendered_asset_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
