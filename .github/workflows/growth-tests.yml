@@ -11,6 +11,7 @@ on:
       - "news_quality_gate.py"
       - ".github/workflows/news.yml"
       - "tests/**"
+      - "main.py"
       - ".github/workflows/growth-tests.yml"
 
 permissions:
