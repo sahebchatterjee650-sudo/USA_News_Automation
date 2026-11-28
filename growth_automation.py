@@ -209,11 +209,12 @@ def community_drafts(videos):
     for v in videos[:5]:
         title = clean_text(v.get("snippet", {}).get("title", ""))
         bn, _ = topic_for(title)
+        prompt = make_comment(title, "")
         body.append(
             f"### Topic: {title}\n"
-            f"- English post: We’re following this update: {title}. What would you like us to explain next?\n"
-            f"- Poll question: What would help you most?\n"
-            f"- Options: Background | Local impact | Key facts | What happens next\n"
+            f"- English post: We’re tracking this update: {title}. {prompt}\n"
+            f"- Poll question: What should we clarify next?\n"
+            f"- Options: Confirmed facts | Local impact | Official response | What happens next\n"
             f"- বাংলা অর্থ: আমরা এই আপডেটটি অনুসরণ করছি: {title}। পরবর্তী কোন বিষয়টি আমরা ব্যাখ্যা করব? কোন তথ্যটি আপনার সবচেয়ে কাজে লাগবে?\n"
         )
     write_report("04_community_post_drafts.md", "Community Post Generator", [
@@ -239,7 +240,7 @@ def publishing_analyzer(videos):
     qualified.sort(key=lambda x: x[1]["views"] / x[1]["count"], reverse=True)
     lines = [f"- {k}: average current views {v['views']//v['count']} across {v['count']} videos" for k, v in qualified[:10]]
     if not lines:
-        lines = ["এখনও নির্ভরযোগ্য সময়-সুপারিশের জন্য একই সময়স্লটে অন্তত ৩টি ভিডিওর তথ্য নেই। আরও ডেটা সংগ্রহ করা হবে।"]
+        lines = ["এখনও নির্ভরযোগ্য সময়-সুপারিশের জন্য একই সময়স্লটে অন্তত ৫টি ভিডিওর তথ্য নেই। আরও ডেটা সংগ্রহ করা হবে।"]
     lines.append("প্রকাশের সময় ও Views-এর সম্পর্ক কেবল ঐতিহাসিক পর্যবেক্ষণ; এটি বেশি Views-এর নিশ্চয়তা দেয় না।")
     write_report("05_publishing_time_analysis.md", "Best Publishing Time Analyzer", [("Time slots with at least 5 videos (small samples excluded)", "\n".join(lines))])
 
