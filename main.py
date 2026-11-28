@@ -287,53 +287,32 @@ def fetch_google_trends_us():
 
 
 def rank_stories_by_trend_interest(entries, trending_topics):
-    """Prioritize publisher stories that overlap current US search trends."""
+    """Rank by meaningful topic overlap; unrelated trends never receive credit."""
+    from news_quality_gate import trend_relevance
     if not trending_topics:
+        for item in entries:
+            item["_trend_score"] = 0
+            item["_trend_match"] = ""
         return entries
 
-    stop = {
-        "the", "and", "for", "with", "from", "after", "over", "into", "says",
-        "said", "will", "what", "when", "where", "could", "would", "about",
-        "this", "that", "have", "been", "were", "they", "their", "news",
-        "latest", "update", "today", "live", "video"
-    }
-
-    def tokens(value):
-        return {
-            word for word in re.findall(r"[a-z0-9]{3,}", (value or "").lower())
-            if word not in stop
-        }
-
-    trend_sets = [(topic, tokens(topic)) for topic in trending_topics]
     ranked = []
     for original_index, item in enumerate(entries):
         headline = item.get("title", "")
-        headline_tokens = tokens(headline)
-        best_score = 0
-        matched_topic = ""
-        for topic, topic_tokens in trend_sets:
-            if not topic_tokens or not headline_tokens:
-                continue
-            overlap = len(headline_tokens & topic_tokens)
-            score = overlap * 2
-            if topic.lower() in headline.lower() or headline.lower() in topic.lower():
-                score += 3
-            if overlap and score > best_score:
-                best_score = score
-                matched_topic = topic
-        item["_trend_score"] = best_score
-        item["_trend_match"] = matched_topic
-        ranked.append((best_score, original_index, item))
+        matches = [(trend_relevance(headline, topic), topic) for topic in trending_topics]
+        score, topic = max(matches, default=(0.0, ""))
+        item["_trend_score"] = round(score * 6, 2) if score else 0
+        item["_trend_match"] = topic if score else ""
+        ranked.append((score, original_index, item))
 
     ranked.sort(key=lambda row: (-row[0], row[1]))
-    matches = sum(1 for score, _, _ in ranked if score > 0)
-    print("Publisher stories matched to current US trends:", matches)
+    matched = sum(1 for score, _, _ in ranked if score > 0)
+    print("Publisher stories with meaningful US trend matches:", matched)
     for score, _, item in ranked[:8]:
         if score:
             print("TREND PRIORITY:", item.get("title", "")[:120],
-                  "| matched trend:", item.get("_trend_match", ""))
+                  "| matched trend:", item.get("_trend_match", ""),
+                  "| relevance:", round(score, 3))
     return [item for _, _, item in ranked]
-
 
 def score_viral_opportunity(entry):
     """
@@ -979,7 +958,8 @@ def create_story_illustration(headline, summary, index):
     Zero-cost local fallback illustration. This is an original designed graphic,
     not a documentary photograph or an AI-generated photo.
     """
-    text = f"{headline} {summary}".lower()
+    # Use the headline as the primary subject; RSS summaries often contain unrelated boilerplate.
+    text = (headline or "").lower()
     img = Image.new("RGB", (1200, 800), (7, 19, 43))
     draw = ImageDraw.Draw(img)
 
@@ -1037,6 +1017,16 @@ def create_story_illustration(headline, summary, index):
             draw.line((940, y, 995, y), fill=(65, 210, 245), width=8)
         for x, y in ((345, 310), (850, 570), (345, 570), (850, 310)):
             draw.ellipse((x-13, y-13, x+13, y+13), fill=(255, 205, 75))
+    elif any(k in text for k in ("black friday", "cyber monday", "discount", "shopping", "retail", "consumer", "sale", "sales", "price", "prices", "market", "stock", "economy", "inflation", "jobs", "business", "earnings")):
+        label = "BUSINESS & ECONOMY"
+        # Original retail/consumer illustration, not a government-building graphic.
+        draw.rectangle((245, 355, 955, 655), fill=(22, 67, 94), outline=(70, 205, 225), width=8)
+        draw.polygon([(210, 355), (600, 190), (990, 355)], fill=(190, 215, 230))
+        draw.rectangle((300, 430, 900, 655), fill=(34, 92, 120))
+        for x in (365, 520, 675):
+            draw.rectangle((x, 455, x+105, 555), fill=(185, 220, 235))
+        draw.rounded_rectangle((760, 230, 970, 325), radius=18, fill=(185, 25, 43))
+        draw.text((865, 277), "% OFF", font=get_font(42, True), fill="white", anchor="mm")
     elif any(k in text for k in ("court", "judge", "lawsuit", "legal", "supreme", "trial", "congress", "senate", "election", "president", "trump", "politic")):
         label = "POLITICS & PUBLIC AFFAIRS"
         draw.rectangle((250, 360, 950, 625), fill=(25, 55, 85))
@@ -1121,21 +1111,8 @@ def save_image_attributions():
 # =========================================================
 
 def get_story_category(headline):
-    text = (headline or "").lower()
-    categories = [
-        ("TECH & AI", ("ai ", "artificial intelligence", "technology", "tech ", "cyber", "software", "chip", "blacklist")),
-        ("US POLITICS", ("trump", "congress", "senate", "white house", "election", "democrat", "republican", "governor")),
-        ("BUSINESS & ECONOMY", ("market", "stock", "economy", "inflation", "bank", "trade", "tariff", "jobs", "company", "business")),
-        ("PUBLIC SAFETY", ("police", "shooting", "fire", "crash", "attack", "investigation", "arrest", "safety")),
-        ("WORLD NEWS", ("ukraine", "russia", "china", "iran", "israel", "warship", "zelensky", "putin", "world")),
-        ("WEATHER & CLIMATE", ("storm", "hurricane", "weather", "snow", "flood", "climate", "temperature")),
-        ("SPORTS", ("nfl", "nba", "mlb", "football", "basketball", "soccer", "baseball", "game", "team")),
-        ("TRAVEL & TRANSPORT", ("delta", "airline", "airport", "flight", "travel", "rail", "transport", "traffic", "delays")),
-    ]
-    for label, keywords in categories:
-        if any(keyword in text for keyword in keywords):
-            return label
-    return "TOP NEWS"
+    from news_quality_gate import classify_category
+    return classify_category(headline)
 
 
 def get_category_accent(category):
@@ -1972,6 +1949,12 @@ def main():
             summary = (summary + " " + article_text).strip()
 
         normalized_headline = normalize_title(headline)
+        from news_quality_gate import is_near_duplicate
+
+        cross_feed_duplicate = next(
+            (old for old in seen_headlines if is_near_duplicate(normalized_headline, old)),
+            None
+        )
 
         if (
             not headline
@@ -1979,6 +1962,7 @@ def main():
             or link in seen
             or not normalized_headline
             or normalized_headline in seen_headlines
+            or cross_feed_duplicate
         ):
             continue
 
@@ -2044,6 +2028,23 @@ def main():
             )
 
             if success:
+
+                # Mandatory local pre-publish gate: never upload a broken or non-Shorts render.
+                from news_quality_gate import validate_rendered_assets
+                video_asset = VIDEO_DIR / f"news_{next_index:02}.mp4"
+                thumbnail_asset = VIDEO_DIR / f"thumbnail_{next_index:02}.jpg"
+                captions_asset = VIDEO_DIR / f"captions_{next_index:02}.ass"
+                quality_ok, quality_reason = validate_rendered_assets(
+                    video_asset, thumbnail_asset, captions_asset
+                )
+                if not quality_ok:
+                    print("PRE-PUBLISH QUALITY GATE FAILED:", headline, "|", quality_reason)
+                    try:
+                        video_asset.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    continue
+                print("PRE-PUBLISH QUALITY GATE PASSED:", headline, "|", quality_reason)
 
                 # Optional community extras are excluded from the core video pipeline.
                 created_stories.append((headline, link))

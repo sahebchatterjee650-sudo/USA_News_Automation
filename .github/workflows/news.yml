@@ -10,6 +10,7 @@ on:
       - main
     paths:
       - "main.py"
+      - "news_quality_gate.py"
       - "youtube_upload.py"
       - "requirements.txt"
       - ".github/workflows/news.yml"
