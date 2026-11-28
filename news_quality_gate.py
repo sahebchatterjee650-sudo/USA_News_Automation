@@ -135,4 +135,5 @@ def visual_scene_label(scene_no):
         2: "KEY DEVELOPMENT",
         3: "WHO IS AFFECTED",
         4: "WHAT HAPPENS NEXT",
+        5: "THE LATEST UPDATE",
     }.get(int(scene_no), "THE STORY")
