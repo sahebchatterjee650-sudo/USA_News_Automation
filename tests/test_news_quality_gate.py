@@ -28,18 +28,18 @@ class NewsQualityGateTests(unittest.TestCase):
         self.assertFalse(is_near_duplicate("Black Friday shopping deals", "Senate election results"))
 
 
-    def test_script_is_split_into_four_visual_beats(self):
+    def test_script_is_split_into_five_visual_beats(self):
         script = (
             "Officials announced the new plan today. The measure follows months of debate. "
             "Local agencies will begin the first phase next week. Residents will receive updates "
             "as more details become available."
         )
-        segments = split_visual_segments(script, 4)
-        self.assertEqual(len(segments), 4)
+        segments = split_visual_segments(script, 5)
+        self.assertEqual(len(segments), 5)
         self.assertTrue(all(segments))
 
     def test_visual_scene_cards_are_distinct(self):
-        labels = [visual_scene_label(i) for i in range(1, 5)]
+        labels = [visual_scene_label(i) for i in range(1, 6)]
         self.assertEqual(len(set(labels)), 4)
 
     def test_missing_rendered_asset_fails_closed(self):
