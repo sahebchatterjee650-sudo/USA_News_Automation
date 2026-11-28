@@ -16,7 +16,7 @@ RULES = [
 ]
 
 def _text(title, description=""):
-    value = re.sub(r"https?://\\S+", " ", f"{title or ''} {description or ''}".lower())
+    value = re.sub(r"https?://\S+", " ", f"{title or ''} {description or ''}".lower())
     return " " + re.sub(r"[^a-z0-9]+", " ", value).strip() + " "
 
 def classify_topic(title, description=""):
