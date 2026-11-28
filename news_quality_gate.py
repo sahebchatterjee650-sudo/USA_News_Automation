@@ -111,12 +111,12 @@ def validate_rendered_assets(video_path, thumbnail_path, captions_path):
 
 def split_visual_segments(script, max_segments=4):
     """Split narration into up to four balanced, source-ordered visual beats."""
-    text = re.sub(r"\\s+", " ", script or "").strip()
+    text = re.sub(r"\s+", " ", script or "").strip()
     if not text:
         return ["USA news update"]
     words = text.split()
     count = min(max(1, max_segments), len(words))
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\\s+", text) if part.strip()]
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
     if len(sentences) >= count:
         groups = [[] for _ in range(count)]
         for i, sentence in enumerate(sentences):
