@@ -1063,6 +1063,38 @@ def create_story_illustration(headline, summary, index):
         for x, y in [(300,550),(420,465),(535,500),(690,370),(850,420)]:
             draw.ellipse((x-13,y-13,x+13,y+13), fill=(255,205,75))
 
+    # Each fallback scene gets a different visual beat, not a repeated category card.
+    from news_quality_gate import visual_scene_label
+    scene_no = int(index) % 10
+    if scene_no == 0:
+        scene_no = 1
+    scene_no = ((scene_no - 1) % 4) + 1
+    draw.rounded_rectangle((85, 535, 1115, 675), radius=24,
+                           fill=(5, 18, 38), outline=(55, 190, 230), width=5)
+    draw.text((120, 555), visual_scene_label(scene_no),
+              font=get_font(34, True), fill=(75, 210, 245))
+    if scene_no == 1:
+        draw.line((180, 635, 980, 635), fill=(205, 225, 240), width=7)
+        for x in (240, 500, 760, 960):
+            draw.ellipse((x-17, 618, x+17, 652), fill=(255, 195, 65))
+    elif scene_no == 2:
+        for x, height in zip((250, 430, 610, 790), (38, 65, 88, 52)):
+            draw.rounded_rectangle((x, 650-height, x+90, 650), radius=10,
+                                   fill=(50, 185, 225))
+    elif scene_no == 3:
+        for x in (330, 600, 870):
+            draw.ellipse((x-22, 600, x+22, 644), fill=(225, 235, 245))
+            draw.rounded_rectangle((x-42, 638, x+42, 665), radius=12,
+                                   fill=(45, 130, 175))
+    else:
+        for x in (250, 520, 790):
+            draw.rounded_rectangle((x, 610, x+150, 655), radius=12,
+                                   fill=(24, 75, 115), outline=(75, 205, 240), width=3)
+        draw.line((400, 632, 510, 632), fill=(255, 195, 65), width=8)
+        draw.polygon([(510, 620), (530, 632), (510, 644)], fill=(255, 195, 65))
+        draw.line((670, 632, 780, 632), fill=(255, 195, 65), width=8)
+        draw.polygon([(780, 620), (800, 632), (780, 644)], fill=(255, 195, 65))
+
     draw.rounded_rectangle((85, 90, 620, 160), radius=16, fill=(185, 25, 43))
     draw.text((115, 105), label, font=get_font(32, True), fill="white")
     draw.text((90, 690), "EDITORIAL ILLUSTRATION • DIGITAL ORBIT",
@@ -1469,36 +1501,10 @@ def filter_path(path):
 # STORY VISUALS AND SHORTS COVER
 # =========================================================
 
-def split_script_for_visuals(script, max_segments=3):
-    """Split narration into multiple balanced visual beats, even if RSS fallback has few sentences."""
-    text = re.sub(r"\s+", " ", script or "").strip()
-    if not text:
-        return ["USA news update"]
-
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]
-    # Prefer sentence boundaries, but RSS fallback sometimes supplies one long sentence.
-    if len(sentences) >= 2:
-        count = min(max_segments, len(sentences))
-        groups = [[] for _ in range(count)]
-        for i, sentence in enumerate(sentences):
-            groups[min(count - 1, i * count // len(sentences))].append(sentence)
-        segments = [" ".join(group) for group in groups if group]
-    else:
-        words = text.split()
-        count = min(max_segments, max(1, (len(words) + 11) // 12))
-        chunk_size = max(1, (len(words) + count - 1) // count)
-        segments = [" ".join(words[i:i + chunk_size])
-                    for i in range(0, len(words), chunk_size)]
-
-    # For normal 15–60 second Shorts, aim for at least three scene beats.
-    words = text.split()
-    if len(segments) < 3 and len(words) >= 18:
-        count = min(max_segments, 3)
-        chunk_size = max(1, (len(words) + count - 1) // count)
-        segments = [" ".join(words[i:i + chunk_size])
-                    for i in range(0, len(words), chunk_size)]
-    return segments[:max_segments] or [text]
-
+def split_script_for_visuals(script, max_segments=4):
+    """Split narration into four balanced, source-ordered visual beats."""
+    from news_quality_gate import split_visual_segments
+    return split_visual_segments(script, max_segments)
 
 def download_visual_for_segment(headline, segment, index, visual_no):
     global OPENVERSE_RATE_LIMITED
@@ -1613,7 +1619,7 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
     if fallback_image and Path(fallback_image).exists():
         visuals.append(Path(fallback_image))
 
-    segments = split_script_for_visuals(script, 3)
+    segments = split_script_for_visuals(script, 4)
     for visual_no, segment in enumerate(segments, 1):
         image_path = None
 
@@ -1658,6 +1664,23 @@ def get_story_visuals(headline, summary, script, index, fallback_image=None):
         if digest not in hashes:
             hashes.add(digest)
             unique.append(path)
+
+    # Guarantee at least four visually distinct scenes even when image providers
+    # return one repeated stock image or fall back to the same category artwork.
+    if len(unique) < 4:
+        for scene_no in range(1, 5):
+            if len(unique) >= 4:
+                break
+            try:
+                scene_path = create_story_illustration(
+                    headline, f"{summary} {scene_no}", index * 10 + scene_no
+                )
+                digest = hashlib.md5(Path(scene_path).read_bytes()).hexdigest()
+                if digest not in hashes:
+                    hashes.add(digest)
+                    unique.append(Path(scene_path))
+            except Exception as error:
+                print("Distinct scene fallback failed:", str(error)[:160])
 
     print("Hybrid visual scenes prepared:", len(unique))
     print("Licensed photo attributions collected:", len(IMAGE_ATTRIBUTIONS))
