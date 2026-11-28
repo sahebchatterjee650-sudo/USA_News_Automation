@@ -1068,7 +1068,7 @@ def create_story_illustration(headline, summary, index):
     scene_no = int(index) % 10
     if scene_no == 0:
         scene_no = 1
-    scene_no = ((scene_no - 1) % 4) + 1
+    scene_no = ((scene_no - 1) % 5) + 1
     draw.rounded_rectangle((85, 535, 1115, 675), radius=24,
                            fill=(5, 18, 38), outline=(55, 190, 230), width=5)
     draw.text((120, 555), visual_scene_label(scene_no),
