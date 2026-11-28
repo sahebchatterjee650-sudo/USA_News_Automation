@@ -44,6 +44,9 @@ RSS_FEEDS = [
     ("NBC News", "https://feeds.nbcnews.com/nbcnews/public/news"),
     ("AP via Google News", "https://news.google.com/rss/search?q=when:24h+site:apnews.com&hl=en-US&gl=US&ceid=US:en"),
     ("Reuters via Google News", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&hl=en-US&gl=US&ceid=US:en"),
+    # Official US labor-market sources: government announcements and measured employment data.
+    ("US Department of Labor", "https://www.dol.gov/rss/releases.xml"),
+    ("US Bureau of Labor Statistics", "https://www.bls.gov/feed/bls_latest.rss"),
 ]
 
 # Corrected Gemini model
@@ -2029,12 +2032,23 @@ Structure:
 2) Explain what happened in clear, natural spoken English.
 3) Explain why it matters ONLY if the source gives enough information; otherwise say
    what is still unknown or what confirmed next step the source reports.
-4) End with a useful takeaway, not a generic engagement-bait question.
+4) After the core explanation (not in the opening hook), include ONE brief, natural
+   channel-subscription invitation. Tie it to the value of future explainers, for example:
+   "For clear updates that explain what this means for you, subscribe to Digital Orbit."
+   Rephrase naturally when appropriate. Never repeat the CTA, interrupt a sensitive story,
+   or make subscription sound required to get important information.
+5) End with a useful takeaway, not a generic engagement-bait question.
 
 Do not copy sentences from the source. Paraphrase naturally and add clear explanation
 without changing the facts. Avoid "breaking news" filler, "you won't believe", "what do
 you think", greetings, channel plugs, and unsupported claims. Return narration only.
 If the source does not support a useful original explainer, return exactly SKIP_STORY.
+
+- Never imply that a labor-market statistic is an individual job vacancy or a guaranteed hiring opportunity.
+- For job listings, verify the employer, role, location, application deadline, and official application URL from the original employer or government careers page.
+- Distinguish official federal/state/local job announcements, private-employer hiring, layoffs, unemployment claims, payroll employment, unemployment rate, wages, and job openings.
+- When reporting BLS figures, state the reference month/period and release date; do not describe a past reporting period as today's live job count.
+- Do not claim that a role is still open unless its official listing is checked and the deadline/status is current.
 
 HEADLINE:
 {headline}
